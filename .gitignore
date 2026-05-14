@@ -1,0 +1,31 @@
+# Local data and source workbooks stay out of GitHub.
+*.xlsx
+*.xlsx.*
+*.xls
+*.xlsm
+*.xlsb
+*.csv
+*.tsv
+*.zip
+*.7z
+*.rar
+
+# Local validation outputs and generated reports.
+outputs/
+local_outputs/
+reports/
+*_report.md
+*.log
+
+# Python/runtime caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local Codex/project state.
+.codex/
+
+# Office temporary files.
+~$*
