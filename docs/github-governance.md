@@ -44,7 +44,8 @@ This means:
 - Keep all real workbooks and local outputs outside GitHub.
 - Report results to the Issue using GitHub-safe summaries.
 - Use `codex/issue-<issue-number>-<short-topic>` for script or governance changes.
-- Prefer the GitHub connector for remote Issue, comment, branch, commit, and PR work.
+- Prefer the GitHub connector for remote Issue, comment, branch, file commit, and PR work.
+- For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`.
 - Use `gh` only as a fallback when the connector cannot perform the operation.
 
 ## GitHub-Safe Report Rules
