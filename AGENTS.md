@@ -49,7 +49,7 @@ Follow these rules:
 - Read sensitive workbooks locally only; never upload Excel, CSV, ledgers, source reports, indicator lists, raw exports, or local outputs.
 - Write the local validation result back to the Issue in GitHub-safe form.
 - If scripts or governance docs need changes, use a branch named `codex/issue-<issue-number>-<short-topic>` and open a PR.
-- Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. Use `gh` only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
+- Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`; use `gh` or Git HTTPS only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
 - Do not use `git add .`; stage explicit allowlisted files only and run `python scripts/governance/check_sensitive_files.py --staged` before any local commit.
 
 ## Data Rules
