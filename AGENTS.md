@@ -35,6 +35,23 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
 - Keep real ledgers, source reports, bottom tables, indicator lists, raw exports, and generated validation outputs local-only.
 - GitHub is for script governance, Issue/PR traceability, and review history; it is not a data processing platform.
 
+## GitHub Workflow
+
+Use the project GitHub governance workflow by default for project tasks unless the user explicitly says not to use GitHub, asks for local-only work, or the task is a quick read-only question that does not need traceability.
+
+Treat short phrases such as `走GitHub` or `上GitHub` as explicit triggers. The longer equivalent instruction is:
+
+`按本项目 GitHub 治理流程处理：创建/复用 Issue，本地读取敏感 Excel，报告回写 Issue；如需改脚本，用 codex/issue-编号-简述 分支开 PR，敏感文件不得入库。`
+
+Follow these rules:
+
+- Create or reuse a GitHub Issue for task traceability.
+- Read sensitive workbooks locally only; never upload Excel, CSV, ledgers, source reports, indicator lists, raw exports, or local outputs.
+- Write the local validation result back to the Issue in GitHub-safe form.
+- If scripts or governance docs need changes, use a branch named `codex/issue-<issue-number>-<short-topic>` and open a PR.
+- Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. Use `gh` only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
+- Do not use `git add .`; stage explicit allowlisted files only and run `python scripts/governance/check_sensitive_files.py --staged` before any local commit.
+
 ## Data Rules
 
 - `项目查询.xlsx` is the authoritative helper ledger for project code, level, status, exit date, and region mapping.
@@ -59,4 +76,3 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
 - Treat each project's `还原金额` as the default authoritative reconciliation value for the three amortization metrics.
 - Prefer validating `发生数 - 计划数 = 还原金额` instead of independently forcing `计划数` and `发生数` to match first.
 - If a mismatch needs deeper tracing, follow the target cell formulas backward to the underlying source sheets.
-
