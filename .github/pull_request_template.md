@@ -1,21 +1,21 @@
-## Linked Issue
+## 关联 Issue
 
 Closes #
 
-## What Changed
+## 变更内容
 
 - 
 
-## Local Validation
+## 本地验证
 
-- Local Codex task:
-- Local data files used by name only:
-- Result summary:
+- 本地 Codex 任务：
+- 本地使用的数据文件名：
+- 验证结论：
 
-## Sensitive Data Check
+## 敏感数据检查
 
-- [ ] No Excel, CSV, ledger, source report, indicator list, output, or archive files are included.
-- [ ] GitHub-visible report content follows masking rules.
-- [ ] Project-level rows show project code plus project-name pinyin only.
-- [ ] Professional-company rows show pinyin only.
-- [ ] GitHub Actions only run no-data governance checks.
+- [ ] 未纳入 Excel、CSV、台账、报表、底表、指标清单、输出目录或压缩包。
+- [ ] GitHub 可见报告已按脱敏规则处理。
+- [ ] 项目级结果只显示项目编码和项目名称拼音。
+- [ ] 专业公司级结果只显示专业公司拼音。
+- [ ] GitHub Actions 只运行无数据治理检查。
