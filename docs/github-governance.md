@@ -2,7 +2,38 @@
 
 GitHub is the governance and traceability layer for this project. It is not a data processing platform.
 
-## Boundary
+## GitHub Preflight
+
+本项目任务默认先走 GitHub。每个需要留痕的项目任务开始时，Codex 必须先创建或复用 Issue，并在聊天开头写明 `GitHub：Issue #<number>`。
+
+允许跳过 GitHub 的情况只有三类：用户明确说 `本地-only`、用户明确说 `不用 GitHub`、任务是无需留痕的快速只读问题。跳过时必须说明原因。
+
+`走GitHub` 和 `上GitHub` 是显式强调词，不是唯一触发词；默认规则仍然是走 GitHub。
+
+## Issue Rules
+
+Issue 标题使用中文，labels 使用英文稳定枚举。
+
+- 指标验证标题：`【指标验证】报表 / 指标 / 期间 / 维度`，默认 labels：`codex-task`、`metric-validation`、`needs-local-data`。
+- 脚本治理标题：`【脚本治理】主题`，默认 labels：`codex-task`、`script-change`。
+- 流程演练标题：`【演练】主题`，默认 labels：`codex-task`、`script-change`。
+- 缺少必要底表或台账时，加 `blocked-missing-ledger`。
+- 本地验证完成且 GitHub-safe 报告已回写时，加 `validated`。
+- 需要人工 review、暂缓自动合并或等待确认时，加 `needs-review`。
+
+Issue workflow 会自动创建缺失 labels，并按中文标题前缀补齐最低必需 labels。标题无法分类时，workflow 会评论提醒补全任务类型。
+
+## PR Rules
+
+有脚本、模板、workflow 或治理文档变更时，必须开 PR，不直接改 `main`。
+
+- 分支名使用 `codex/issue-<issue-number>-<short-topic>`。
+- PR 必须关联 Issue，通常使用 `Closes #<issue-number>`。
+- PR 必须写明本地验证结论和敏感数据检查结论。
+- PR 检查通过后默认自动 squash merge。
+- 以下情况不自动合并：draft PR、PR 标题含 `WIP`、PR 带 `needs-review` label、用户明确要求保持打开或等待 review。
+
+## Data Boundary
 
 Keep these files local only:
 
@@ -17,39 +48,6 @@ Commit these files to GitHub:
 - No-data governance checks.
 - Non-sensitive workflow documentation.
 
-## Local Task Flow
-
-This workflow is the default for project tasks unless the user explicitly says not to use GitHub, asks for local-only work, or asks a quick read-only question that does not need traceability.
-
-1. The user gives the task in local Codex App using natural language.
-2. Codex creates or reuses a GitHub Issue for traceability.
-3. Codex reads local-only workbooks and optimizes existing scripts.
-4. Codex runs validation locally and reports the full result in chat.
-5. Codex posts a GitHub-safe report to the Issue.
-6. If scripts changed, Codex opens a PR with only script and governance changes.
-
-## Standard Trigger
-
-The workflow is default. Say `走GitHub` or `上GitHub` in any Codex thread when you want to make that default explicit.
-
-The longer equivalent instruction is:
-
-```text
-按本项目 GitHub 治理流程处理：创建/复用 Issue，本地读取敏感 Excel，报告回写 Issue；如需改脚本，用 codex/issue-编号-简述 分支开 PR，敏感文件不得入库。
-```
-
-This means:
-
-- Create or reuse a GitHub Issue before treating the task as tracked work.
-- Keep all real workbooks and local outputs outside GitHub.
-- Report results to the Issue using GitHub-safe summaries.
-- Create or reuse a GitHub Issue and use a PR for any persisted script or governance-doc change.
-- Use `codex/issue-<issue-number>-<short-topic>` for the PR branch unless the user explicitly requests another branch.
-- After the PR is created and required no-data checks pass, automatically merge it unless the user explicitly asks to keep it open, close it without merge, or wait for review.
-- Prefer the GitHub connector for remote Issue, comment, branch, file commit, and PR work.
-- For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`.
-- Use `gh` only as a fallback when the connector cannot perform the operation.
-
 ## GitHub-Safe Report Rules
 
 - Project dimension: show project code and project-name pinyin only.
@@ -58,12 +56,18 @@ This means:
 - Do not paste full indicator-list field descriptions into GitHub.
 - Do not attach or upload source workbooks.
 
-## First Checks Before Any Commit
+## Required Checks
 
 Run the sensitive-file check after explicit staging:
 
 ```powershell
 python scripts/governance/check_sensitive_files.py --staged
+```
+
+Run the workflow-rule check before publishing governance changes:
+
+```powershell
+python scripts/governance/check_github_workflow_rules.py --repo-root .
 ```
 
 Inspect the staged file list before committing. Never use `git add .` in this repository.
