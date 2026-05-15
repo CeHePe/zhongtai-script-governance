@@ -1,3 +1,13 @@
+## GitHub Preflight
+
+本项目任务默认先走 GitHub。开始项目任务时，先创建或复用 Issue，并在聊天开头写明 `GitHub：Issue #<number>`。
+
+只有用户明确说 `本地-only`、`不用 GitHub`，或任务是无需留痕的快速只读问题时，才跳过 GitHub；跳过时必须说明原因。
+
+`走GitHub`、`上GitHub` 是显式强调词，不是唯一触发词。指标验证 Issue 标题使用 `【指标验证】报表 / 指标 / 期间 / 维度`，脚本治理标题使用 `【脚本治理】主题`，演练标题使用 `【演练】主题`。
+
+labels 使用英文固定枚举：`codex-task`、`metric-validation`、`needs-local-data`、`blocked-missing-ledger`、`script-change`、`validated`、`needs-review`。
+
 0. 不依赖 PowerShell 直接碰中文文件名，可以试试spreadsheet技能。
 
 1. 先到**来源中的指标清单**获取【需要测试的报表】sheet1中【需要测试的指标】的**计算逻辑**，并优先确认：
@@ -51,4 +61,3 @@
    * 先取每个项目的**还原金额**（即 `发生数 - 计划数`）作为默认权威对照值。
    * 默认先验证 **发生数 - 计划数 = 还原金额**，而不是分别强行核对计划数、发生数。
    * 如需深挖，再沿着对应单元格公式追到源底表。
-

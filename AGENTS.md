@@ -2,6 +2,15 @@
 
 Applies to `C:\BMW\03 jks\02 zhongtai`.
 
+## GitHub Preflight (Mandatory)
+
+- 本项目任务默认先走 GitHub 治理流程。开始项目任务时，先创建或复用 GitHub Issue，并在聊天开头写明 `GitHub：Issue #<number>`。
+- 只有用户明确说 `本地-only`、`不用 GitHub`，或任务是无需留痕的快速只读问题时，才跳过 Issue；跳过时必须在聊天中说明原因。
+- `走GitHub`、`上GitHub` 是显式强调词，不是唯一触发词；默认规则仍然是走 GitHub。
+- Issue 标题使用中文：`【指标验证】报表 / 指标 / 期间 / 维度`、`【脚本治理】主题`、`【演练】主题`。
+- Issue labels 使用英文固定枚举：指标验证默认 `codex-task`、`metric-validation`、`needs-local-data`；脚本或治理变更加 `script-change`；缺底表加 `blocked-missing-ledger`；验证完成加 `validated`；需要人工 review 加 `needs-review`。
+- 有脚本、模板、workflow 或治理文档变更时，必须用 `codex/issue-<issue-number>-<short-topic>` 分支开 PR。PR 检查通过后默认自动合并，除非用户明确要求保持打开、等待 review、或关闭不合并。
+
 ## Core Rule
 
 Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zhongtai-metric-validation/SKILL.md) whenever the task involves:

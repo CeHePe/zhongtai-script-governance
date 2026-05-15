@@ -1,0 +1,38 @@
+name: 脚本治理或流程演练任务
+description: 跟踪本地 Codex 的脚本治理、流程固化或演练任务，不上传数据文件。
+title: "【脚本治理】<主题>"
+labels:
+  - codex-task
+  - script-change
+body:
+  - type: markdown
+    attributes:
+      value: |
+        本 Issue 只用于治理留痕。不要上传 Excel、CSV、台账、报表、底表、指标清单、原始导出或本地输出。
+        如为流程演练，可将标题改为 `【演练】<主题>`。
+  - type: textarea
+    id: task
+    attributes:
+      label: 任务说明
+      description: 说明要治理、固化或演练的事项。
+      placeholder: 例如：强化默认 GitHub Workflow、补充 PR 检查、演练 Issue/PR 闭环。
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 写清楚完成后如何判断通过。
+      placeholder: |
+        - Issue/PR 留痕完整
+        - 不上传任何真实数据文件
+        - GitHub Actions 只运行无数据治理检查
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 备注
+      description: 可写本地限制、已知风险或人工确认事项。
+    validations:
+      required: false

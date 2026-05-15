@@ -2,9 +2,15 @@ name: Governance
 
 on:
   pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches:
       - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   no-data-checks:
@@ -18,3 +24,27 @@ jobs:
         run: python scripts/governance/check_sensitive_files.py --tracked
       - name: Compile Python scripts
         run: python scripts/governance/compile_python.py
+      - name: Check GitHub workflow rules
+        run: python scripts/governance/check_github_workflow_rules.py --repo-root .
+      - name: Check pull request governance
+        if: github.event_name == 'pull_request'
+        run: python scripts/governance/check_github_workflow_rules.py --repo-root . --pr-event "$GITHUB_EVENT_PATH"
+
+  auto-merge:
+    needs: no-data-checks
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'codex/') &&
+      !contains(github.event.pull_request.title, 'WIP') &&
+      !contains(join(github.event.pull_request.labels.*.name, ','), 'needs-review')
+    steps:
+      - name: Squash merge governed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$PR_HEAD_SHA"

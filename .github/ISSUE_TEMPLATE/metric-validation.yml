@@ -1,6 +1,6 @@
-name: Metric validation task
-description: Track a local Codex metric validation task without uploading data files.
-title: "[Metric] <report> - <metric>"
+name: 指标验证任务
+description: 跟踪本地 Codex 指标验证任务，不上传数据文件。
+title: "【指标验证】<报表> / <指标> / <期间> / <维度>"
 labels:
   - codex-task
   - metric-validation
@@ -9,35 +9,35 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this issue to track local Codex work. Do not attach Excel, CSV, ledger, source report, indicator list, or raw export files.
+        本 Issue 只用于治理留痕。不要上传 Excel、CSV、台账、报表、底表、指标清单、原始导出或本地输出。
   - type: input
     id: report
     attributes:
-      label: Report
-      description: Report or workbook name only. Do not upload the workbook.
-      placeholder: e.g. 半收付归母净利润202512项目
+      label: 报表
+      description: 只写报表或工作簿名，不上传文件。
+      placeholder: 例如：半收付归母净利润202512项目
     validations:
       required: true
   - type: input
     id: metric
     attributes:
-      label: Metric
-      description: Exact metric name to validate.
-      placeholder: e.g. 管报归母净利润_空间
+      label: 指标
+      description: 写需要验证的准确指标名。
+      placeholder: 例如：管报归母净利润_空间
     validations:
       required: true
   - type: input
     id: period
     attributes:
-      label: Period
-      description: Report period.
-      placeholder: e.g. 2025-12
+      label: 期间
+      description: 报表期间。
+      placeholder: 例如：2025-12
     validations:
       required: true
   - type: dropdown
     id: dimension
     attributes:
-      label: Dimension
+      label: 维度
       options:
         - 项目
         - 区域
@@ -50,8 +50,8 @@ body:
   - type: textarea
     id: local_files
     attributes:
-      label: Local files to use
-      description: File names or local paths only. Do not upload contents.
+      label: 本地使用文件
+      description: 只写文件名或本地路径，不上传内容。
       placeholder: |
         - JKS_数据中台二期_指标清单.xlsx
         - 项目查询.xlsx
@@ -61,7 +61,7 @@ body:
   - type: textarea
     id: notes
     attributes:
-      label: Notes
-      description: Clarifications, expected scope, or known exceptions.
+      label: 备注
+      description: 补充范围、口径说明或已知例外。
     validations:
       required: false

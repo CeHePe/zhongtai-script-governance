@@ -1,0 +1,82 @@
+name: Issue Governance
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  label-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title || "";
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const labelDefs = {
+              "codex-task": ["5319E7", "Task handled through local Codex"],
+              "metric-validation": ["1D76DB", "Local metric validation task"],
+              "needs-local-data": ["FBCA04", "Requires local-only workbook data"],
+              "blocked-missing-ledger": ["D93F0B", "Blocked by missing local ledger or source workbook"],
+              "script-change": ["0E8A16", "Changes validation or governance scripts"],
+              "validated": ["006B75", "Local validation result has been posted"],
+              "needs-review": ["B60205", "Requires human review or should not auto-merge"]
+            };
+
+            async function ensureLabel(name) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                const [color, description] = labelDefs[name];
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            for (const name of Object.keys(labelDefs)) {
+              await ensureLabel(name);
+            }
+
+            let required = [];
+            if (title.startsWith("【指标验证】")) {
+              required = ["codex-task", "metric-validation", "needs-local-data"];
+            } else if (title.startsWith("【脚本治理】") || title.startsWith("【演练】")) {
+              required = ["codex-task", "script-change"];
+            }
+
+            if (required.length > 0) {
+              const existing = new Set(issue.labels.map((label) => label.name));
+              const missing = required.filter((name) => !existing.has(name));
+              if (missing.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  labels: missing
+                });
+              }
+              return;
+            }
+
+            const marker = "<!-- codex-issue-title-guard -->";
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issue.number,
+              per_page: 100
+            });
+            const alreadyWarned = comments.some((comment) => comment.body && comment.body.includes(marker));
+            if (!alreadyWarned) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `${marker}\n请把 Issue 标题改为以下格式之一，以便自动补齐治理 labels：\n\n- \`【指标验证】报表 / 指标 / 期间 / 维度\`\n- \`【脚本治理】主题\`\n- \`【演练】主题\``
+              });
+            }
