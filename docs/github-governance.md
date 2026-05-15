@@ -43,10 +43,9 @@ This means:
 - Create or reuse a GitHub Issue before treating the task as tracked work.
 - Keep all real workbooks and local outputs outside GitHub.
 - Report results to the Issue using GitHub-safe summaries.
-- By default, use the Issue/comment trail only; do not create a new branch or PR unless the user explicitly asks for one or the change genuinely needs review before it lands.
-- Persist script or governance-doc changes with a GitHub connector file commit to `main` or the explicitly requested target branch.
-- If a PR is created only for traceability, close it after recording the result unless the user asks to keep it open, review it, or merge it.
-- If a branch is explicitly needed, use `codex/issue-<issue-number>-<short-topic>`.
+- Create or reuse a GitHub Issue and use a PR for any persisted script or governance-doc change.
+- Use `codex/issue-<issue-number>-<short-topic>` for the PR branch unless the user explicitly requests another branch.
+- After the PR is created and required no-data checks pass, automatically merge it unless the user explicitly asks to keep it open, close it without merge, or wait for review.
 - Prefer the GitHub connector for remote Issue, comment, branch, file commit, and PR work.
 - For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`.
 - Use `gh` only as a fallback when the connector cannot perform the operation.

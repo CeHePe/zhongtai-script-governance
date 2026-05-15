@@ -48,10 +48,9 @@ Follow these rules:
 - Create or reuse a GitHub Issue for task traceability.
 - Read sensitive workbooks locally only; never upload Excel, CSV, ledgers, source reports, indicator lists, raw exports, or local outputs.
 - Write the local validation result back to the Issue in GitHub-safe form.
-- By default, use the Issue/comment trail only. Do not create a new branch or PR unless the user explicitly asks for one or the change genuinely needs review before it lands.
-- If scripts or governance docs need to be persisted, prefer a GitHub connector file commit to `main` or the explicitly requested target branch.
-- If a PR is created only for traceability, close it after recording the result unless the user asks to keep it open, review it, or merge it.
-- If a branch is explicitly needed, use `codex/issue-<issue-number>-<short-topic>`.
+- By default, create or reuse a GitHub Issue and use a PR for any persisted script or governance-doc change.
+- Use `codex/issue-<issue-number>-<short-topic>` for the PR branch unless the user explicitly requests another branch.
+- After the PR is created and required no-data checks pass, automatically merge it unless the user explicitly asks to keep it open, close it without merge, or wait for review.
 - Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`; use `gh` or Git HTTPS only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
 - Do not use `git add .`; stage explicit allowlisted files only and run `python scripts/governance/check_sensitive_files.py --staged` before any local commit.
 
