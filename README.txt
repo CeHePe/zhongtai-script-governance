@@ -8,6 +8,8 @@
 
 labels 使用英文固定枚举：`codex-task`、`metric-validation`、`needs-local-data`、`blocked-missing-ledger`、`script-change`、`validated`、`needs-review`。
 
+PR 合并后必须做本地收尾：同步远端 `main`、切回 `main`、快进到 `origin/main`，并用 `git branch -d` 清理已合并的本地 `codex/...` 分支；若本地有未提交改动，先 stash 并说明。
+
 0. 不依赖 PowerShell 直接碰中文文件名，可以试试spreadsheet技能。
 
 1. 先到**来源中的指标清单**获取【需要测试的报表】sheet1中【需要测试的指标】的**计算逻辑**，并优先确认：

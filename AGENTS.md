@@ -10,6 +10,7 @@ Applies to `C:\BMW\03 jks\02 zhongtai`.
 - Issue 标题使用中文：`【指标验证】报表 / 指标 / 期间 / 维度`、`【脚本治理】主题`、`【演练】主题`。
 - Issue labels 使用英文固定枚举：指标验证默认 `codex-task`、`metric-validation`、`needs-local-data`；脚本或治理变更加 `script-change`；缺底表加 `blocked-missing-ledger`；验证完成加 `validated`；需要人工 review 加 `needs-review`。
 - 有脚本、模板、workflow 或治理文档变更时，必须用 `codex/issue-<issue-number>-<short-topic>` 分支开 PR。PR 检查通过后默认自动合并，除非用户明确要求保持打开、等待 review、或关闭不合并。
+- PR 合并后必须做本地收尾：同步远端 `main`、切回 `main`、快进到 `origin/main`，并用 `git branch -d` 清理已合并的本地 `codex/...` 分支；若本地有未提交改动，先 stash 并说明。
 
 ## Core Rule
 
@@ -60,6 +61,7 @@ Follow these rules:
 - By default, create or reuse a GitHub Issue and use a PR for any persisted script or governance-doc change.
 - Use `codex/issue-<issue-number>-<short-topic>` for the PR branch unless the user explicitly requests another branch.
 - After the PR is created and required no-data checks pass, automatically merge it unless the user explicitly asks to keep it open, close it without merge, or wait for review.
+- After merge, run local cleanup: fetch `origin/main`, switch to `main`, fast-forward to `origin/main`, and delete the merged local `codex/...` branch with `git branch -d`. Use `http.sslBackend=schannel` for fetch on Windows if OpenSSL fails.
 - Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`; use `gh` or Git HTTPS only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
 - Do not use `git add .`; stage explicit allowlisted files only and run `python scripts/governance/check_sensitive_files.py --staged` before any local commit.
 
