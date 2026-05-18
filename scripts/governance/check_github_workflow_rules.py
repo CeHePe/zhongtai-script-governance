@@ -19,14 +19,19 @@ REQUIRED_FILES = (
 )
 
 DOCUMENT_SENTINELS = {
-    "AGENTS.md": ("GitHub Preflight", "走GitHub", "上GitHub", "自动合并", "PR 合并后", "branch -d"),
-    "README.txt": ("GitHub Preflight", "走GitHub", "上GitHub", "PR 合并后"),
+    "AGENTS.md": ("GitHub Preflight", "L0", "L1", "L2", "走GitHub", "上GitHub", "自动合并", "PR 合并后", "branch -d"),
+    "README.txt": ("GitHub Preflight", "L0", "L1", "L2", "走GitHub", "上GitHub", "PR 合并后"),
     "docs/github-governance.md": (
         "GitHub Preflight",
+        "L0",
+        "L1",
+        "L2",
         "Issue Rules",
         "PR Rules",
         "Post-Merge Local Cleanup",
+        "自动合并",
         "http.sslBackend=schannel",
+        "http.version=HTTP/1.1",
         "branch -d",
     ),
 }

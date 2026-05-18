@@ -1,10 +1,14 @@
 ## GitHub Preflight
 
-本项目任务默认先走 GitHub。开始项目任务时，先创建或复用 Issue，并在聊天开头写明 `GitHub：Issue #<number>`。
+默认按最低可行层级执行，优先省 token，不主动升级流程。
 
-只有用户明确说 `本地-only`、`不用 GitHub`，或任务是无需留痕的快速只读问题时，才跳过 GitHub；跳过时必须说明原因。
+L0 问答/判断/计算正确值：不建 Issue，不读全仓，不跑检查，只直接回答。适用于“是什么、为什么、能不能、怎么做、给方案”。
 
-`走GitHub`、`上GitHub` 是显式强调词，不是唯一触发词。指标验证 Issue 标题使用 `【指标验证】报表 / 指标 / 期间 / 维度`，脚本治理标题使用 `【脚本治理】主题`，演练标题使用 `【演练】主题`。
+L1 本地小改：只改文件、跑最小检查，不上 GitHub。适用于少量真实指标验证、README/AGENTS 小修、注释、局部脚本微调。
+
+L2 正式脚本/指标任务/治理变更：建 Issue，本地验证，必要时 PR。适用于全量真实指标验证、脚本改动、需要留痕的结论，以及改 workflow、模板、强控规则。
+
+`走GitHub`、`上GitHub` 是显式升级到 L2 的触发词。L2 指标验证 Issue 标题使用 `【指标验证】报表 / 指标 / 期间 / 维度`，脚本治理标题使用 `【脚本治理】主题`，演练标题使用 `【演练】主题`。
 
 labels 使用英文固定枚举：`codex-task`、`metric-validation`、`needs-local-data`、`blocked-missing-ledger`、`script-change`、`validated`、`needs-review`。
 
