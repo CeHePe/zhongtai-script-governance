@@ -26,6 +26,9 @@ PREV_YEAR_RATE = u(r"\u4e0a\u4e00\u5e74\u56de\u6b3e\u7387")
 RECEIVABLE_RATIO = u(r"\u56de\u6b3e\u8425\u6536\u6bd4")
 STATUS_EXIT = u(r"\u5df2\u64a4\u573a")
 STATUS_NOT_IN = u(r"\u672a\u8fdb\u573a")
+MULTI_OWNERSHIP = u(r"\u591a\u4e1a\u6743")
+ASSESS_PROJECT = u(r"\u8003\u6838\u9879\u76ee")
+HOUSING_SERVICE = u(r"\u4f4f\u5b85\u670d\u52a1")
 
 
 REPORT_COLS = [
@@ -37,12 +40,12 @@ REPORT_COLS = [
     "owner_rcv",
     "big_owner_rev",
     "big_owner_ar",
+    "gold_repayment_prev",
     "numerator",
     "revenue",
     "non_assess_revenue",
     "related_revenue",
     "non_assess_related_revenue",
-    "offset_contract",
     "gold_balance",
     "cutoff_income",
     "n12_not_due",
@@ -76,12 +79,12 @@ REGION_LINE_COLS = [
     "owner_rcv",
     "big_owner_rev",
     "big_owner_ar",
+    "gold_repayment_prev",
     "numerator",
     "revenue",
     "non_assess_revenue",
     "related_revenue",
     "non_assess_related_revenue",
-    "offset_contract",
     "gold_balance",
     "cutoff_income",
     "n12_not_due",
@@ -111,12 +114,12 @@ NUMERIC = [
     "owner_rcv",
     "big_owner_rev",
     "big_owner_ar",
+    "gold_repayment_prev",
     "numerator",
     "revenue",
     "non_assess_revenue",
     "related_revenue",
     "non_assess_related_revenue",
-    "offset_contract",
     "gold_balance",
     "cutoff_income",
     "n12_not_due",
@@ -124,16 +127,7 @@ NUMERIC = [
     "rate",
 ]
 
-SOURCE_COMPONENTS = [
-    "big_owner_ar",
-    "revenue",
-    "related_revenue",
-    "offset_contract",
-    "gold_balance",
-    "cutoff_income",
-    "n12_not_due",
-    "denominator",
-]
+SOURCE_COMPONENTS = []
 
 
 @dataclass
@@ -258,12 +252,46 @@ def load_non_assess_codes() -> set[str]:
     return {exact_code(v) for v in df[code_col].dropna()}
 
 
+def load_ownership_map() -> pd.DataFrame:
+    """用现有项目级辅助表补齐业权属性；项目查询当前版本不是项目辅助台账，不能用于本指标。"""
+    frames: list[pd.DataFrame] = []
+
+    half_profit = find_workbook(u(r"\u534a\u6536\u4ed8\u5f52\u6bcd\u51c0\u5229\u6da6"), "202512", PROJECT)
+    half_df = pd.read_excel(half_profit, header=None).iloc[1:].reset_index(drop=True)
+    half_df = half_df.iloc[:, [2, 35]].copy()
+    half_df.columns = ["project_code", "ownership"]
+    frames.append(half_df)
+
+    recv = find_workbook(u(r"\u5e94\u6536\u8d26\u9f84\u53ca\u672a\u5230\u8d26\u671f\u91d1\u989d\u5e74\u5ea6\u5206\u5e03"), "202512")
+    recv_df = pd.read_excel(recv, header=None).iloc[2:].reset_index(drop=True)
+    recv_df = recv_df.iloc[:, [4, 7]].copy()
+    recv_df.columns = ["project_code", "ownership"]
+    frames.append(recv_df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined["project_code"] = combined["project_code"].map(exact_code)
+    combined["ownership"] = combined["ownership"].fillna("").astype(str).str.strip()
+    combined = combined[(combined["project_code"] != "") & (combined["ownership"] != "")]
+    combined = combined.drop_duplicates(["project_code", "ownership"])
+    combined = combined.groupby("project_code", as_index=False).first()
+    combined["is_multi"] = combined["ownership"] == MULTI_OWNERSHIP
+    return combined
+
+
 def load_project_query_flags() -> pd.DataFrame:
     path = next(p for p in ROOT.glob("*.xlsx") if p.name == u(r"\u9879\u76ee\u67e5\u8be2.xlsx"))
     df = pd.read_excel(path).iloc[:, [0, 5, 11]].copy()
     df.columns = ["project_code", "project_level", "project_status_query"]
     df["code_exact"] = df["project_code"].map(exact_code)
     return df[["code_exact", "project_level", "project_status_query"]]
+
+
+def load_project_query_status() -> pd.DataFrame:
+    path = next(p for p in ROOT.glob("*.xlsx") if p.name == u(r"\u9879\u76ee\u67e5\u8be2.xlsx"))
+    df = pd.read_excel(path).iloc[:, [0, 11]].copy()
+    df.columns = ["project_code", "project_status_query"]
+    df["project_code"] = df["project_code"].astype(str)
+    return df
 
 
 def load_operating_202412() -> pd.DataFrame:
@@ -349,7 +377,6 @@ def load_gold_2024() -> pd.DataFrame:
     df = raw[raw["year"].astype(str) == "2024"].copy()
     df["code_exact"] = df["project_code"].map(exact_code)
     df["code_norm"] = df["project_code"].map(norm_code)
-    # 上一年金币余额取 2024 年12月累计当期金币，即年度应赠送金额全年累计。
     df["gold_balance"] = pd.to_numeric(df["annual_gold"], errors="coerce").fillna(0.0)
     return df
 
@@ -485,7 +512,6 @@ def build_source(project_report: pd.DataFrame) -> pd.DataFrame:
     source["gold_balance"] = apply_source(codes, gold[["code_exact", "code_norm", "gold_balance"]], "gold_balance")
     source["offset_contract"] = apply_source(codes, offset[["code_exact", "code_norm", "offset_contract"]], "offset_contract")
 
-    # 用户确认项目级这两项没有值，项目维度测试跳过，分母按报表项目级口径取 0。
     source["non_assess_revenue"] = 0.0
     source["non_assess_related_revenue"] = 0.0
     source["denominator"] = (
@@ -523,13 +549,14 @@ def compare_component(report: pd.DataFrame, source: pd.DataFrame, component: str
 
 
 def internal_formula_check(label: str, df: pd.DataFrame) -> None:
-    num_diff = (df["owner_rcv"] + df["big_owner_rev"] - df["big_owner_ar"] - df["numerator"]).abs().max()
+    num_diff = (
+        df["owner_rcv"] + df["big_owner_rev"] - df["big_owner_ar"] - df["gold_repayment_prev"] - df["numerator"]
+    ).abs().max()
     den_diff = (
         df["revenue"]
         - df["non_assess_revenue"]
         - df["related_revenue"]
         + df["non_assess_related_revenue"]
-        - df["offset_contract"]
         - df["gold_balance"]
         - df["cutoff_income"]
         - df["n12_not_due"]
@@ -575,6 +602,157 @@ def compare_rollup(project: pd.DataFrame, region: pd.DataFrame, housing: pd.Data
             print(f"  {col}: {diff:.10f}")
     if not mismatch:
         print("  match")
+
+
+def compare_region_line_all_metrics() -> None:
+    report_path = find_optional_report(REGION_LINE)
+    if report_path is None:
+        print("\n[region_line_all_metrics]")
+        print("region_line report missing")
+        return
+
+    project = load_project_report().copy()
+    status = load_project_query_status()
+    project["project_code"] = project["project_code"].astype(str)
+    project = project.merge(status, on="project_code", how="left")
+    report = load_region_line_report().copy()
+
+    active_mask = ~project["project_status_query"].astype(str).isin([STATUS_EXIT, STATUS_NOT_IN])
+    roll_cols = [c for c in NUMERIC if c != "rate"]
+    full = project.groupby(["region", "line"], as_index=False)[roll_cols].sum()
+    full["rate"] = full["numerator"] / full["denominator"]
+    active = project[active_mask].groupby(["region", "line"], as_index=False)[roll_cols].sum()
+    active["rate"] = active["numerator"] / active["denominator"]
+
+    merged = full.merge(active, on=["region", "line"], suffixes=("_full", "_active"))
+    merged = merged.merge(report[["region", "line"] + NUMERIC], on=["region", "line"], how="left")
+
+    summary_rows: list[dict[str, object]] = []
+    for metric in NUMERIC:
+        report_total = float(report[metric].sum())
+        full_total = float(full[metric].sum())
+        active_total = float(active[metric].sum())
+        diff_full = full_total - report_total
+        diff_active = active_total - report_total
+        if abs(diff_full) <= TOL:
+            rule = "项目直接汇总"
+            status_text = "PASS"
+        elif abs(diff_active) <= TOL:
+            rule = "项目汇总后排除已撤场/未进场"
+            status_text = "PASS"
+        else:
+            rule = "未对平"
+            status_text = "FAIL"
+        summary_rows.append(
+            {
+                "metric": metric,
+                "report_total": report_total,
+                "project_full_total": full_total,
+                "project_active_total": active_total,
+                "diff_full": diff_full,
+                "diff_active": diff_active,
+                "rule": rule,
+                "status": status_text,
+            }
+        )
+
+    print("\n[region_line_all_metrics]")
+    print(pd.DataFrame(summary_rows).to_string(index=False))
+
+
+def compare_region_line_focus_metrics() -> None:
+    report_path = find_optional_report(REGION_LINE)
+    if report_path is None:
+        print("\n[region_line_focus_metrics]")
+        print("region_line report missing")
+        return
+
+    project = load_project_report().copy()
+    ownership = load_ownership_map()
+    non_assess_codes = load_non_assess_codes()
+    report = load_region_line_report().copy()
+
+    project = project.merge(ownership[["project_code", "ownership", "is_multi"]], on="project_code", how="left")
+    project["is_non_assess"] = project["project_code"].isin(non_assess_codes)
+    project["is_assess"] = ~project["is_non_assess"]
+    project["line"] = project["line"].astype(str).str.strip()
+
+    metric_specs = [
+        {
+            "metric": "owner_rcv",
+            "source_col": "owner_rcv",
+            "logic": "项目级 N+12小业主实收金额，按 多业权 且 考核项目 汇总",
+            "mask": project["is_multi"].fillna(False) & project["is_assess"],
+        },
+        {
+            "metric": "big_owner_rev",
+            "source_col": "big_owner_rev",
+            "logic": "项目级 N+12大业主营业收入，按 多业权 且 考核项目 汇总",
+            "mask": project["is_multi"].fillna(False) & project["is_assess"],
+        },
+        {
+            "metric": "big_owner_ar",
+            "source_col": "big_owner_ar",
+            "logic": "项目级 N+12大业主欠费余额，按 多业权 且 考核项目 汇总",
+            "mask": project["is_multi"].fillna(False) & project["is_assess"],
+        },
+        {
+            "metric": "non_assess_revenue",
+            "source_col": "revenue",
+            "logic": "非考核多业权项目的 项目级营业收入 汇总",
+            "mask": project["is_multi"].fillna(False) & project["is_non_assess"],
+        },
+        {
+            "metric": "non_assess_related_revenue",
+            "source_col": "related_revenue",
+            "logic": "非考核多业权项目的 项目级关联方营业收入 汇总",
+            "mask": project["is_multi"].fillna(False) & project["is_non_assess"],
+        },
+    ]
+
+    summary_rows: list[dict[str, object]] = []
+    detail_frames: list[pd.DataFrame] = []
+    for spec in metric_specs:
+        grouped = (
+            project.loc[spec["mask"]]
+            .groupby(["region", "line"], as_index=False)[spec["source_col"]]
+            .sum()
+            .rename(columns={spec["source_col"]: "project_sum"})
+        )
+        merged = report[["region", "line", spec["metric"]]].merge(grouped, on=["region", "line"], how="left")
+        merged["project_sum"] = merged["project_sum"].fillna(0.0)
+        merged["diff"] = merged["project_sum"] - merged[spec["metric"]]
+        merged["metric"] = spec["metric"]
+        merged["logic"] = spec["logic"]
+        detail_frames.append(merged)
+
+        summary_rows.append(
+            {
+                "metric": spec["metric"],
+                "logic": spec["logic"],
+                "report_total": float(report[spec["metric"]].sum()),
+                "project_total": float(merged["project_sum"].sum()),
+                "diff": float(merged["diff"].sum()),
+                "status": "PASS" if abs(float(merged["diff"].sum())) <= TOL else "FAIL",
+            }
+        )
+
+    missing = project[project["ownership"].isna() | (project["ownership"].astype(str).str.strip() == "")]
+    missing_summary = {
+        "missing_projects": int(missing["project_code"].nunique()),
+        "assess_owner_rcv": float(missing.loc[~missing["is_non_assess"], "owner_rcv"].sum()),
+        "assess_big_owner_rev": float(missing.loc[~missing["is_non_assess"], "big_owner_rev"].sum()),
+        "assess_big_owner_ar": float(missing.loc[~missing["is_non_assess"], "big_owner_ar"].sum()),
+        "non_assess_revenue": float(missing.loc[missing["is_non_assess"], "revenue"].sum()),
+        "non_assess_related_revenue": float(missing.loc[missing["is_non_assess"], "related_revenue"].sum()),
+    }
+
+    print("\n[region_line_focus_metrics]")
+    print(pd.DataFrame(summary_rows).to_string(index=False))
+    print("\n[region_line_focus_metric_details]")
+    print(pd.concat(detail_frames, ignore_index=True).to_string(index=False))
+    print("\n[ownership_mapping_gap]")
+    print(pd.DataFrame([missing_summary]).to_string(index=False))
 
 
 def compare_region_line_gold_logic() -> None:
@@ -699,7 +877,6 @@ def diagnose_region_line_prev_gold_gap() -> None:
 
 def main() -> None:
     project = load_project_report()
-    source = build_source(project)
 
     print("[internal_formula_check]")
     internal_formula_check("project", project)
@@ -711,26 +888,16 @@ def main() -> None:
     if find_optional_report(HOUSING, excludes=[REGION_HOUSING, PROJECT]) is not None:
         housing = load_housing_report()
         internal_formula_check("housing", housing)
+    if find_optional_report(REGION_LINE) is not None:
+        region_line = load_region_line_report()
+        internal_formula_check("region_line", region_line)
 
     print("\n[project_source_component_checks]")
-    failed_components = []
-    for comp in SOURCE_COMPONENTS:
-        result = compare_component(project, source, comp)
-        status = "PASS" if abs(result.diff_total) <= TOL and result.mismatch_count == 0 else "FAIL"
-        if status == "FAIL":
-            failed_components.append(comp)
-        print(f"{comp}: {status}")
-        print(f"  report_total: {result.report_total:.10f}")
-        print(f"  source_total: {result.source_total:.10f}")
-        print(f"  diff_total: {result.diff_total:.10f}")
-        print(f"  mismatch_project_count: {result.mismatch_count}")
-        if not result.top_diffs.empty:
-            print("  top_diffs:")
-            print(result.top_diffs.to_string(index=False))
+    print("当前工作区缺少旧脚本依赖的 202412 经营收支底表，项目源台账全量校验本次缓测")
 
     if region is not None and housing is not None:
         compare_rollup(project, region, housing)
-    compare_region_line_gold_logic()
+    compare_region_line_focus_metrics()
 
     print("\n[blocked_components]")
     print("N+12小业主实收金额: 新视窗来源按用户要求缓测")
@@ -740,7 +907,7 @@ def main() -> None:
     print("非考核项目关联方营业收入: 用户确认项目级没有值，本次跳过")
 
     print("\n[summary]")
-    print(f"failed_source_components: {', '.join(failed_components) if failed_components else 'none'}")
+    print("failed_source_components: blocked")
 
 
 if __name__ == "__main__":
