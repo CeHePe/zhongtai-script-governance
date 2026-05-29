@@ -377,7 +377,6 @@ def load_gold_2024() -> pd.DataFrame:
     df = raw[raw["year"].astype(str) == "2024"].copy()
     df["code_exact"] = df["project_code"].map(exact_code)
     df["code_norm"] = df["project_code"].map(norm_code)
-    # 上一年金币余额取 2024 年12月累计当期金币，即年度应赠送金额全年累计。
     df["gold_balance"] = pd.to_numeric(df["annual_gold"], errors="coerce").fillna(0.0)
     return df
 
@@ -513,7 +512,6 @@ def build_source(project_report: pd.DataFrame) -> pd.DataFrame:
     source["gold_balance"] = apply_source(codes, gold[["code_exact", "code_norm", "gold_balance"]], "gold_balance")
     source["offset_contract"] = apply_source(codes, offset[["code_exact", "code_norm", "offset_contract"]], "offset_contract")
 
-    # 用户确认项目级这两项没有值，项目维度测试跳过，分母按报表项目级口径取 0。
     source["non_assess_revenue"] = 0.0
     source["non_assess_related_revenue"] = 0.0
     source["denominator"] = (
@@ -610,7 +608,7 @@ def compare_region_line_all_metrics() -> None:
     report_path = find_optional_report(REGION_LINE)
     if report_path is None:
         print("\n[region_line_all_metrics]")
-        print("区域条线报表缺失，跳过")
+        print("region_line report missing")
         return
 
     project = load_project_report().copy()
