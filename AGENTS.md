@@ -30,7 +30,7 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
    - required ledgers and source reports
    - monthly vs cumulative logic
    - D-exit exclusion
-   - non-assessment exclusion
+   - (profit) non-assessment exclusion
    - extra high-dimension adjustments
    - whether high dimensions may aggregate from the project report
 4. Identify missing ledgers before giving a pass/fail result.
@@ -70,7 +70,7 @@ Follow these rules:
 ## Data Rules
 
 - `项目查询.xlsx` is the authoritative helper ledger for project code, level, status, exit date, and region mapping.
-- `非考核项目台账.xlsx` is membership-based: present means non-assessment.
+- `非考核项目台账.xlsx` is not a general project-helper ledger. Use it only when the indicator list requires `(利润)非考核项目` exclusion; membership means excluded non-assessment.
 - Do not infer business rules from report differences. Use only:
   - the indicator list
   - explicit user clarification
@@ -84,10 +84,6 @@ Follow these rules:
 - `金令金匠` interest must include both `金令` and `金匠` legal entities.
 - `安保` interest can match through `威震保安` entities even when `法人与组织关系.xlsx` lacks an explicit `安保` row; report the mapping gap separately.
 
-## Amortization Testing Lesson
+## Tolerance Rule
 
-- For `带资摊销` / `智能化整改摊销` / `质效提升` testing, first use `1 摊销模板-新 - 2025年四季度v1.5(去重版) - 导入整理 V2` or a similarly named workbook.
-- In that workbook, the `B-按项目统计` sheet is the main project-level base table.
-- Treat each project's `还原金额` as the default authoritative reconciliation value for the three amortization metrics.
-- Prefer validating `发生数 - 计划数 = 还原金额` instead of independently forcing `计划数` and `发生数` to match first.
-- If a mismatch needs deeper tracing, follow the target cell formulas backward to the underlying source sheets.
+- Treat absolute values below `0.01` yuan, namely `0.000001` ten-thousand yuan, as zero. This mainly affects cases where an extremely small value is used as a denominator.
