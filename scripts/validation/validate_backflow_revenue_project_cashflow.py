@@ -13,6 +13,7 @@ from _project_root import find_project_root
 ROOT = find_project_root(__file__)
 REPORT_MONTH = "202512"
 TOLERANCE = 1e-6
+RATIO_DENOMINATOR_ZERO_THRESHOLD = 0.01
 
 
 def u(text: str) -> str:
@@ -204,7 +205,7 @@ def load_report() -> tuple[pd.DataFrame, dict[str, object]]:
     data["code_norm"] = data["project_code"].map(normalize_code)
     meta = {
         "report_file": path.name,
-        "layout_note": "报表尾部实际数据列顺序为 AG=回款营收比, AH=回款营收比分子, AI=回款营收比分母, AJ=项目状态。",
+        "layout_note": u(r"\u62a5\u8868\u5c3e\u90e8\u5b9e\u9645\u6570\u636e\u5217\u987a\u5e8f\u4e3a AG=\u56de\u6b3e\u8425\u6536\u6bd4, AH=\u56de\u6b3e\u8425\u6536\u6bd4\u5206\u5b50, AI=\u56de\u6b3e\u8425\u6536\u6bd4\u5206\u6bcd, AJ=\u9879\u76ee\u72b6\u6001\u3002"),
     }
     return data, meta
 
@@ -293,7 +294,7 @@ def add_calculations(df: pd.DataFrame) -> pd.DataFrame:
         - out["coin_current"]
     )
     out["calc_ratio"] = 0.0
-    mask = out["denominator"].abs() > 1e-12
+    mask = out["denominator"].abs() >= RATIO_DENOMINATOR_ZERO_THRESHOLD
     out.loc[mask, "calc_ratio"] = out.loc[mask, "numerator"] / out.loc[mask, "denominator"]
     out["cashflow_diff"] = out["source_cashflow"] - out["cashflow"]
     out["numerator_diff"] = out["calc_numerator"] - out["numerator"]
