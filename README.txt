@@ -8,6 +8,10 @@ L2 正式脚本/指标任务/治理变更：建 Issue，本地验证，必要时
 labels 使用英文固定枚举：`codex-task`、`metric-validation`、`needs-local-data`、`blocked-missing-ledger`、`script-change`、`validated`、`needs-review`。
 PR 合并后必须做本地收尾：同步远端 `main`、切回 `main`、快进到 `origin/main`，并用 `git branch -d` 清理已合并的本地 `codex/...` 分支；若本地有未提交改动，先 stash 并说明。
 
+## GitHub Tool Decision Order
+
+本地工作区用 `git`；远端 Git 对象优先用 `git`，失败再 `gh api`；Issue、comment、labels、PR 和 workflow 状态优先用 GitHub connector；CI 细节 connector 不够时再用 `gh run` / `gh pr checks`；自动合并由 GitHub Actions 内的 `gh pr merge --squash --delete-branch` 处理；真实 Excel 数据只允许本地 Python/scripts 读取和计算。
+
 0. 不依赖 PowerShell 直接碰中文文件名，可以试试spreadsheet技能。
 
 1. 先到**来源中的指标清单**获取【需要测试的报表】sheet1中【需要测试的指标】的**计算逻辑**，并优先确认：

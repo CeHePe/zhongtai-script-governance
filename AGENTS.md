@@ -47,6 +47,15 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
 - Keep real ledgers, source reports, bottom tables, indicator lists, raw exports, and generated validation outputs local-only.
 - GitHub is for script governance, Issue/PR traceability, and review history; it is not a data processing platform.
 
+## GitHub Tool Decision Order
+
+- Local workspace operations use `git`: status, diff, branch, stash, add, commit, local merge/rebase checks.
+- Remote Git object operations use `git` first: fetch, prune, push branch, delete remote branch; use `gh api` only as fallback.
+- GitHub governance objects use the GitHub connector first: Issue, comment, labels, PR creation, PR metadata, workflow-run status.
+- CI detail inspection uses the GitHub connector first; use `gh run` or `gh pr checks` only when connector detail is insufficient.
+- Automatic PR merge is handled by GitHub Actions with `gh pr merge --squash --delete-branch`; local `gh` is only a manual fallback.
+- Sensitive Excel processing always stays in local Python/scripts, never in GitHub Actions, connector, or `gh`.
+
 ## GitHub Workflow
 
 Use the project GitHub governance workflow only for L2 tasks by default. L0 answers and L1 local small changes should avoid GitHub unless the user explicitly says `走GitHub` or `上GitHub`.
