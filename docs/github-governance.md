@@ -12,6 +12,19 @@ GitHub is the governance and traceability layer for this project. It is not a da
 
 `走GitHub` 和 `上GitHub` 是显式升级到 L2 的触发词；用户明确说 `本地-only` 或 `不用 GitHub` 时降级为本地流程。
 
+## Tool Decision Order
+
+| Layer | Operation scope | First choice | Fallback | Do not use |
+|---|---|---|---|---|
+| A | Local workspace: status, diff, branch, stash, add, commit | `git` | none | connector / `gh` |
+| B | Remote Git objects: fetch, prune, push branch, delete remote branch | `git` | `gh api` | connector unless creating a simple remote file commit |
+| C | GitHub governance objects: Issue, comment, labels, PR create/query | GitHub connector | `gh` | manual web edits |
+| D | CI / Actions status | GitHub connector | `gh run` / `gh pr checks` | `git` |
+| E | Automatic PR merge and branch deletion | GitHub Actions `gh pr merge --squash --delete-branch` | manual `gh pr merge` | connector unless full merge/delete support is confirmed |
+| F | Sensitive workbook processing | local Python/scripts | none | GitHub Actions / connector / `gh` |
+
+Decision rule: `git` manages local and remote Git objects, the GitHub connector manages traceability objects, `gh` handles GitHub automation and fallback paths, and real Excel data is processed only by local scripts.
+
 ## Issue Rules
 
 Issue 标题使用中文，labels 使用英文稳定枚举。
