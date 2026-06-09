@@ -114,10 +114,12 @@ def load_ratio_source() -> pd.DataFrame:
     df = pd.read_excel(path, header=None, dtype=object).iloc[3:].reset_index(drop=True).copy()
     df["code_norm"] = df.iloc[:, 3].map(normalize_code)
     df = df[df["code_norm"].ne("")].copy()
+    df["source_total_cash"] = as_number(df.iloc[:, 5]) / 10000.0
     df["ratio_display"] = as_number(df.iloc[:, 32])
     df["ratio_numerator"] = as_number(df.iloc[:, 33])
     df["ratio_denominator"] = as_number(df.iloc[:, 34])
     out = df.groupby("code_norm", as_index=False).agg(
+        calc_total_cash=("source_total_cash", "sum"),
         ratio_display=("ratio_display", "sum"),
         ratio_numerator=("ratio_numerator", "sum"),
         ratio_denominator=("ratio_denominator", "sum"),
@@ -128,19 +130,6 @@ def load_ratio_source() -> pd.DataFrame:
         for numerator, denominator in zip(out["ratio_numerator"], out["ratio_denominator"])
     ]
     out["ratio_source_file"] = path.name
-    return out
-
-
-def load_152_total_cash() -> pd.DataFrame:
-    path = find_workbook("1.5.2", REPORT_MONTH)
-    df = pd.read_excel(path, header=None, dtype=object).iloc[5:].reset_index(drop=True).copy()
-    df["code_norm"] = df.iloc[:, 1].map(normalize_code)
-    df = df[df["code_norm"].ne("")].copy()
-    df["source_total_cash"] = as_number(df.iloc[:, 10]) / 10000.0
-    out = df.groupby("code_norm", as_index=False).agg(
-        calc_total_cash=("source_total_cash", "sum"),
-        total_cash_source_rows=("code_norm", "size"),
-    )
     out["total_cash_source_file"] = path.name
     return out
 
@@ -198,6 +187,20 @@ def sample_mismatches(
     return bad[cols].head(limit).to_dict(orient="records")
 
 
+def mismatch_previous_match_counts(
+    base: pd.DataFrame,
+    report_col: str,
+    calc_col: str,
+    tolerance: float,
+) -> dict[str, int]:
+    diff = base[report_col] - base[calc_col]
+    bad = base.loc[diff.abs() > tolerance].copy()
+    return {
+        "previous_report_matched": int(bad["previous_report_file"].notna().sum()),
+        "previous_report_missing": int(bad["previous_report_file"].isna().sum()),
+    }
+
+
 def main() -> None:
     configure_stdout()
     warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
@@ -211,7 +214,6 @@ def main() -> None:
         }
     )
     ratio_source = load_ratio_source()
-    total_cash_source = load_152_total_cash()
 
     base = (
         current.merge(
@@ -220,7 +222,6 @@ def main() -> None:
             how="left",
         )
         .merge(ratio_source, on="code_norm", how="left")
-        .merge(total_cash_source, on="code_norm", how="left")
     )
 
     base["calc_revenue_ratio"] = base["calc_revenue_ratio"].fillna(0.0)
@@ -235,9 +236,9 @@ def main() -> None:
 
     summaries = [
         summarize(base, u(r"\u56de\u6b3e\u8425\u6536\u6bd4\uff08%\uff09"), "revenue_ratio", "calc_revenue_ratio", VALUE_TOL, "ratio_source_rows"),
-        summarize(base, u(r"\u56de\u6b3e\u8425\u6536\u6bd4\u540c\u6bd4\uff08%\uff09"), "revenue_ratio_yoy", "calc_revenue_ratio_yoy", VALUE_TOL, "previous_report_file"),
-        summarize(base, u(r"\u603b\u56de\u6b3e\u989d\uff08\u4e07\u5143\uff09"), "total_cash", "calc_total_cash", AMOUNT_TOL, "total_cash_source_rows"),
-        summarize(base, u(r"\u603b\u56de\u6b3e\u989d\u540c\u6bd4\uff08%\uff09"), "total_cash_yoy", "calc_total_cash_yoy", VALUE_TOL, "previous_report_file"),
+        summarize(base, u(r"\u56de\u6b3e\u8425\u6536\u6bd4\u540c\u6bd4\uff08%\uff09"), "revenue_ratio_yoy", "calc_revenue_ratio_yoy", VALUE_TOL),
+        summarize(base, u(r"\u7d2f\u8ba1\u56de\u6536\u73b0\u91d1\u6d41/\u603b\u56de\u6b3e\u989d\uff08\u4e07\u5143\uff09"), "total_cash", "calc_total_cash", AMOUNT_TOL, "ratio_source_rows"),
+        summarize(base, u(r"\u7d2f\u8ba1\u56de\u6536\u73b0\u91d1\u6d41/\u603b\u56de\u6b3e\u989d\u540c\u6bd4\uff08%\uff09"), "total_cash_yoy", "calc_total_cash_yoy", VALUE_TOL),
     ]
 
     result = {
@@ -246,27 +247,33 @@ def main() -> None:
         "rules": {
             "revenue_ratio_current": u(r"\u56de\u6b3e\u8425\u6536\u6bd4202512\u9879\u76ee.xlsx: \u56de\u6b3e\u8425\u6536\u6bd4\u5206\u5b50 / \u56de\u6b3e\u8425\u6536\u6bd4\u5206\u6bcd"),
             "revenue_ratio_yoy": u(r"202512\u590d\u7b97\u56de\u6b3e\u8425\u6536\u6bd4 - 202412\u76841.3.1.2\u9879\u76ee\u62a5\u8868\u56de\u6b3e\u8425\u6536\u6bd4"),
-            "total_cash_current": u(r"1.5.2\u534a\u6536\u4ed8\u53e3\u5f84\u5e95\u8868\u7d2f\u8ba1\u56de\u6536\u73b0\u91d1\u6d41 / 10000"),
-            "total_cash_yoy": u(r"(202512\u590d\u7b97\u603b\u56de\u6b3e\u989d - 202412\u76841.3.1.2\u9879\u76ee\u62a5\u8868\u603b\u56de\u6b3e\u989d) / abs(202412\u603b\u56de\u6b3e\u989d); \u4e0a\u5e74\u7edd\u5bf9\u503c<=1e-6\u63090"),
+            "total_cash_current": u(r"\u56de\u6b3e\u8425\u6536\u6bd4202512\u9879\u76ee.xlsx: \u7d2f\u8ba1\u56de\u6536\u73b0\u91d1\u6d41 / 10000\uff0c\u5bf9\u6bd41.3.1.2\u62a5\u8868\u7684\u603b\u56de\u6b3e\u989d\uff08\u4e07\u5143\uff09"),
+            "total_cash_yoy": u(r"(202512\u590d\u7b97\u7d2f\u8ba1\u56de\u6536\u73b0\u91d1\u6d41 - 202412\u76841.3.1.2\u9879\u76ee\u62a5\u8868\u603b\u56de\u6b3e\u989d) / abs(202412\u603b\u56de\u6b3e\u989d); \u4e0a\u5e74\u7edd\u5bf9\u503c<=1e-6\u63090"),
         },
         "source_files": sorted(
             {
                 find_workbook("1.3.1.2", REPORT_MONTH, PROJECT).name,
                 find_workbook("1.3.1.2", PREVIOUS_YEAR_MONTH, PROJECT).name,
                 find_workbook(RATIO, REPORT_MONTH, PROJECT).name,
-                find_workbook("1.5.2", REPORT_MONTH).name,
             }
         ),
-        "missing_sources": [
-            u(r"\u672a\u627e\u5230202412\u76841.5.2\u534a\u6536\u4ed8\u53e3\u5f84\u5e95\u8868\uff1b\u603b\u56de\u6b3e\u989d\u540c\u6bd4\u53ea\u80fd\u6309202412\u76841.3.1.2\u9879\u76ee\u62a5\u8868\u603b\u56de\u6b3e\u989d\u5217\u4f5c\u4e3a\u4e0a\u5e74\u57fa\u6570\u505a\u62a5\u8868\u53e3\u5f84\u6821\u9a8c\uff0c\u4e0d\u80fd\u5b8c\u6574\u8ffd\u6eaf\u4e0a\u5e74\u6e90\u8868\u3002")
-        ],
+        "missing_sources": [],
         "indicator_rows": load_indicator_rows(),
         "source_coverage": {
             "report_rows": int(len(base)),
             "ratio_source_matched_rows": int(base["ratio_source_rows"].notna().sum()),
-            "total_cash_source_matched_rows": int(base["total_cash_source_rows"].notna().sum()),
+            "total_cash_source_matched_rows": int(base["ratio_source_rows"].notna().sum()),
             "previous_report_matched_rows": int(base["previous_report_file"].notna().sum()),
             "previous_report_total_cash_nonzero_rows": int((base["prev_total_cash_report"].abs() > VALUE_TOL).sum()),
+        },
+        "mismatch_diagnostics": {
+            "previous_missing_rule": u(r"202412\u76841.3.1.2\u9879\u76ee\u5e95\u8868\u7f3a\u540c\u9879\u76ee\u7f16\u7801\u65f6\uff0c\u4e0a\u5e74\u503c\u63090\u53c2\u4e0e\u540c\u6bd4\u590d\u7b97"),
+            "revenue_ratio_yoy": mismatch_previous_match_counts(
+                base, "revenue_ratio_yoy", "calc_revenue_ratio_yoy", VALUE_TOL
+            ),
+            "total_cash_yoy": mismatch_previous_match_counts(
+                base, "total_cash_yoy", "calc_total_cash_yoy", VALUE_TOL
+            ),
         },
         "summaries": summaries,
         "samples": {
@@ -282,7 +289,14 @@ def main() -> None:
                 "total_cash",
                 "calc_total_cash",
                 AMOUNT_TOL,
-                ["total_cash_source_rows"],
+                ["ratio_source_rows"],
+            ),
+            "total_cash_yoy": sample_mismatches(
+                base,
+                "total_cash_yoy",
+                "calc_total_cash_yoy",
+                VALUE_TOL,
+                ["calc_total_cash", "prev_total_cash_report"],
             ),
         },
     }
