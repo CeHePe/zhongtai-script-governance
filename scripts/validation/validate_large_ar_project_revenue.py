@@ -24,7 +24,7 @@ def u(text: str) -> str:
 
 
 @dataclass(frozen=True)
-class RevenueCheck:
+class AmountCheck:
     code: str
     report_amount: Decimal
     source_amount: Decimal
@@ -45,6 +45,13 @@ def find_workbook(*tokens: str) -> Path:
         names = ", ".join(path.name for path in matches)
         raise FileExistsError(f"Multiple workbooks found for tokens {tokens!r}: {names}")
     return matches[0]
+
+
+def find_exact_workbook(name: str) -> Path:
+    path = ROOT / name
+    if not path.exists():
+        raise FileNotFoundError(f"Workbook not found: {name}")
+    return path
 
 
 def column_number(cell_ref: str) -> int:
@@ -130,35 +137,44 @@ def first(values: Iterable[str]) -> str:
     return sorted(values)[0] if values else ""
 
 
-def main() -> int:
-    report_path = find_workbook("8.1_", "202512")
-    source_path = find_workbook("1.5.1-", "202512")
-
-    report_rows = read_first_sheet(report_path)
-    source_rows = read_first_sheet(source_path)
-
-    report: dict[str, dict[str, object]] = {}
-    for row in report_rows[2:]:
-        if not row.get(4):
+def build_amounts(
+    rows: list[dict[int, str | None]],
+    start_row: int,
+    code_col: int,
+    name_col: int,
+    amount_col: int,
+    divisor: Decimal = Decimal("1"),
+) -> dict[str, dict[str, object]]:
+    amounts: dict[str, dict[str, object]] = {}
+    for row in rows[start_row:]:
+        if not row.get(code_col):
             continue
-        add_amount(report, row.get(4), row.get(5), to_decimal(row.get(11)))
+        add_amount(
+            amounts,
+            row.get(code_col),
+            row.get(name_col),
+            to_decimal(row.get(amount_col)) / divisor,
+        )
+    return amounts
 
-    source: dict[str, dict[str, object]] = {}
-    for row in source_rows[5:]:
-        if not row.get(2):
-            continue
-        add_amount(source, row.get(2), row.get(3), to_decimal(row.get(12)) / Decimal("10000"))
 
-    checks: list[RevenueCheck] = []
-    missing_source: list[RevenueCheck] = []
-    source_only: list[RevenueCheck] = []
+def compare_amounts(
+    metric_name: str,
+    report_path: Path,
+    source_path: Path,
+    report: dict[str, dict[str, object]],
+    source: dict[str, dict[str, object]],
+) -> bool:
+    checks: list[AmountCheck] = []
+    missing_source: list[AmountCheck] = []
+    source_only: list[AmountCheck] = []
 
     for code in sorted(set(report) | set(source)):
         report_item = report.get(code)
         source_item = source.get(code)
         report_amount = report_item["amount"] if report_item else Decimal("0")
         source_amount = source_item["amount"] if source_item else Decimal("0")
-        check = RevenueCheck(
+        check = AmountCheck(
             code=code,
             report_amount=report_amount,
             source_amount=source_amount,
@@ -170,12 +186,14 @@ def main() -> int:
             checks.append(check)
         elif report_item and not source_item:
             missing_source.append(check)
-        elif source_item and not report_item and source_amount != 0:
+        elif source_item and not report_item and abs(source_amount) > TOL:
             source_only.append(check)
 
     mismatches = [check for check in checks if abs(check.diff) > TOL]
     missing_nonzero = [check for check in missing_source if abs(check.report_amount) > TOL]
 
+    print()
+    print(u(r"\u6307\u6807:"), metric_name)
     print(u(r"\u62a5\u8868\u6587\u4ef6:"), report_path.name)
     print(u(r"\u6765\u6e90\u6587\u4ef6:"), source_path.name)
     print(u(r"\u62a5\u8868\u9879\u76ee\u6570:"), len(report))
@@ -183,9 +201,9 @@ def main() -> int:
     print(u(r"\u5339\u914d\u9879\u76ee\u6570:"), len(checks))
     print(u(r"\u5dee\u5f02\u9879\u76ee\u6570:"), len(mismatches))
     print(u(r"\u62a5\u8868\u6709\u503c\u4f46\u6765\u6e90\u7f3a\u5931\u9879\u76ee\u6570:"), len(missing_nonzero))
-    print(u(r"\u62a5\u8868\u8425\u4e1a\u6536\u5165\u5408\u8ba1(\u4e07\u5143):"), sum(item["amount"] for item in report.values()))
+    print(u(r"\u62a5\u8868\u5408\u8ba1(\u4e07\u5143):"), sum(item["amount"] for item in report.values()))
     print(
-        u(r"\u5339\u914d\u6765\u6e90\u8425\u4e1a\u6536\u5165\u5408\u8ba1(\u4e07\u5143):"),
+        u(r"\u5339\u914d\u6765\u6e90\u5408\u8ba1(\u4e07\u5143):"),
         sum(source[code]["amount"] for code in report if code in source),
     )
     print(u(r"\u5339\u914d\u5dee\u5f02\u5408\u8ba1(\u4e07\u5143):"), sum(check.diff for check in checks))
@@ -195,15 +213,53 @@ def main() -> int:
         print(u(r"\n\u5dee\u5f02Top10:"))
         for check in sorted(mismatches, key=lambda item: abs(item.diff), reverse=True)[:10]:
             print(check)
-        return 1
     if missing_nonzero:
         print(u(r"\n\u62a5\u8868\u6709\u503c\u4f46\u6765\u6e90\u7f3a\u5931Top10:"))
         for check in sorted(missing_nonzero, key=lambda item: abs(item.report_amount), reverse=True)[:10]:
             print(check)
-        return 1
 
-    print(u(r"\u7ed3\u8bba: \u901a\u8fc7"))
-    return 0
+    passed = not mismatches and not missing_nonzero
+    print(u(r"\u7ed3\u8bba:"), u(r"\u901a\u8fc7") if passed else u(r"\u4e0d\u901a\u8fc7"))
+    return passed
+
+
+def validate_revenue(report_path: Path, report_rows: list[dict[int, str | None]]) -> bool:
+    source_path = find_workbook("1.5.1-", "202512")
+    source_rows = read_first_sheet(source_path)
+    report = build_amounts(report_rows, 2, 4, 5, 11)
+    source = build_amounts(source_rows, 5, 2, 3, 12, Decimal("10000"))
+    return compare_amounts(
+        u(r"\u8425\u4e1a\u6536\u5165"),
+        report_path,
+        source_path,
+        report,
+        source,
+    )
+
+
+def validate_cumulative_arrears(report_path: Path, report_rows: list[dict[int, str | None]]) -> bool:
+    source_path = find_exact_workbook(u(r"\u4e1a\u52a1\u5e10\u9f84-\u5e74\u5ea6\u5206\u5e03.xlsx"))
+    source_rows = read_first_sheet(source_path)
+    report = build_amounts(report_rows, 2, 4, 5, 12)
+    source = build_amounts(source_rows, 4, 2, 3, 12, Decimal("10000"))
+    return compare_amounts(
+        u(r"\u7d2f\u8ba1\u6b20\u8d39\u4f59\u989d"),
+        report_path,
+        source_path,
+        report,
+        source,
+    )
+
+
+def main() -> int:
+    report_path = find_workbook("8.1_", "202512")
+    report_rows = read_first_sheet(report_path)
+
+    results = [
+        validate_revenue(report_path, report_rows),
+        validate_cumulative_arrears(report_path, report_rows),
+    ]
+    return 0 if all(results) else 1
 
 
 if __name__ == "__main__":

@@ -199,7 +199,7 @@ def load_num_den_source(tokens: tuple[str, ...], skip_rows: int, code_col: int, 
 
 
 def load_sources() -> pd.DataFrame:
-    revenue = load_ratio_source((REVENUE_RATIO, REPORT_MONTH, PROJECT), 3, 3, 31).rename(
+    revenue = load_ratio_source((REVENUE_RATIO, REPORT_MONTH, PROJECT), 3, 3, 32).rename(
         columns={"source_rate": "calc_revenue_ratio", "source_rows": "revenue_source_rows"}
     )
     current = load_num_den_source((CURRENT_RATE, REPORT_MONTH, PROJECT), 3, 3, 17, 28).rename(
