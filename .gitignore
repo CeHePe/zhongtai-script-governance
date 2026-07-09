@@ -9,6 +9,17 @@
 *.zip
 *.7z
 *.rar
+*.html
+*.htm
+*.pdf
+*.docx
+*.pptx
+*.msg
+*.eml
+*Competition*
+*competition*
+*竞赛*
+*投稿*
 
 # Local validation outputs and generated reports.
 outputs/
