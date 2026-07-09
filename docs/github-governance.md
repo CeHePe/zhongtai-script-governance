@@ -69,6 +69,7 @@ Keep these files local only:
 
 - Real ledgers, source reports, bottom tables, indicator lists, and raw exports.
 - Excel, CSV, TSV, archives, and generated validation outputs.
+- Customer, internal, competition, submission, presentation, exported web page, and email materials unless explicitly sanitized and approved for publication.
 - Any report that contains unmasked project names or professional-company names.
 
 Commit these files to GitHub:

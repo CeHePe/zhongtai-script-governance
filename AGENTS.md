@@ -45,6 +45,7 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
 - When scripting Chinese enum values, use Unicode-safe Python literals and avoid shell-encoding assumptions.
 - Do not use `git add .` in this repository. Stage only explicit allowlisted governance, documentation, and script paths.
 - Keep real ledgers, source reports, bottom tables, indicator lists, raw exports, and generated validation outputs local-only.
+- Keep customer, internal, competition, submission, presentation, exported web page, and email materials local-only unless they are explicitly sanitized and approved for publication.
 - GitHub is for script governance, Issue/PR traceability, and review history; it is not a data processing platform.
 
 ## GitHub Tool Decision Order

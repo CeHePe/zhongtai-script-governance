@@ -16,6 +16,13 @@ SENSITIVE_SUFFIXES = {
     ".zip",
     ".7z",
     ".rar",
+    ".html",
+    ".htm",
+    ".pdf",
+    ".docx",
+    ".pptx",
+    ".msg",
+    ".eml",
 }
 
 SENSITIVE_NAMES = {
@@ -32,6 +39,15 @@ SENSITIVE_KEYWORDS = (
     "底表",
     "报表",
     "明细",
+    "客户",
+    "内部",
+    "竞赛",
+    "投稿",
+    "Competition",
+    "competition",
+    "submission",
+    "client",
+    "confidential",
 )
 
 
