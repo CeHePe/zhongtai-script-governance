@@ -1,4 +1,4 @@
-# Issue #1 Indicator Count Workflow Drill
+# Local Workbook Row Count Workflow Drill
 
 ## Purpose
 
@@ -6,52 +6,39 @@ This document records an end-to-end local Codex governance drill. GitHub is used
 
 ## Local Sensitive Read
 
-- Local workbook read by filename only: `JKS_数据中台二期_指标清单.xlsx`
+- Local workbook read: described by category only, not by raw filename
 - Upload status: not uploaded
 - GitHub content policy: no workbook content, metric-row details, field logic text, raw ledger data, or local output files are included
 
 ## Count Result
 
-| Check | Result |
-| --- | ---: |
-| Workbook opened locally | yes |
-| Sheet count | 1 |
-| Sheet max row | 2143 |
-| Sheet max column | 15 |
-| User-requested count: rows excluding header | 2142 |
-| Non-empty rows after header | 2142 |
-| Blank rows after header | 0 |
-| Sequence-column non-empty rows | 2131 |
-| Sequence range | 1..2131 |
-| Sequence duplicates | 0 |
-| Sequence missing count | 0 |
-| Metric-name non-empty rows | 2108 |
+The drill verified that a local workbook can be opened and counted locally while only a sanitized summary is recorded in GitHub.
 
-Primary answer for the drill task: the indicator list has **2142 rows after the header** under the requested ideal row-counting definition.
+| Check | Result |
+| --- | --- |
+| Workbook opened locally | yes |
+| Sheet count captured | yes |
+| Row count captured | yes |
+| Blank-row check captured | yes |
+| Sequence-column check captured | yes |
 
 ## Permission Escalation Review
 
-Observed or previously reproduced escalation points:
+Observed or previously reproduced escalation points are recorded without exposing local workbook names or contents.
 
-- Local Git writes to `.git/HEAD.lock` and `.git/index.lock` required elevation. Current evidence points to `.git` ACL behavior rather than business workflow logic.
-- Sandbox-local `gh` and Git HTTPS could not read GitHub keyring credentials, so GitHub CLI/API operations required elevation.
-- `gh repo create` previously failed because the token lacked `createRepository`; the repository was ultimately created and pushed outside that blocked path.
-- This drill uses the GitHub connector for Issue, remote branch, remote commit, and PR operations where possible.
-
-Current policy decision: do not fix `.git` ACL in this drill. Record the blocker and revisit only if local Git writes must run fully inside the sandbox.
+- Local Git writes may fail if `.git` ACLs are not aligned with the sandbox.
+- Sandbox-local GitHub CLI or Git HTTPS may fail when credentials are unavailable to the sandbox.
+- GitHub connector is preferred for Issue, comment, PR, and remote commit operations where possible.
 
 ## Config Recommendations
 
-Recommended follow-up for `C:\Users\scene\.codex\config.toml`:
-
-- Keep the existing trusted project entry for `\\?\C:\BMW\03 jks\02 zhongtai`.
-- Add the normalized trusted project path `C:\BMW\03 jks\02 zhongtai`.
-- Persist `C:\BMW\03 jks\02 zhongtai` and `C:\tmp` under `sandbox_workspace_write.writable_roots`.
-- Do not store GitHub tokens or PATs in `config.toml`.
-- Prefer the GitHub connector over `gh` for future Issue, comment, PR, and remote commit operations.
+- Keep trusted project paths configured locally.
+- Keep local workspace write roots configured locally.
+- Do not store GitHub tokens or PATs in local config files committed to the repository.
+- Prefer the GitHub connector over local CLI tools when credentials are unstable.
 
 ## Validation
 
-- Local spreadsheet read used `openpyxl` in read-only mode.
-- Remote PR file list should contain only this document.
-- Governance Actions should run on the PR and perform no-data checks only.
+- Local spreadsheet reads must remain local-only.
+- Remote PR file lists must contain only sanitized documentation, scripts, templates, or governance checks.
+- Governance Actions must run no-data checks only.

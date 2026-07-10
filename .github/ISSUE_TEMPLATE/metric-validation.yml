@@ -1,6 +1,6 @@
 name: 指标验证任务
 description: 跟踪本地 Codex 指标验证任务，不上传数据文件。
-title: "【指标验证】<报表> / <指标> / <期间> / <维度>"
+title: "【指标验证】<报表类别> / <指标类别> / <期间> / <维度>"
 labels:
   - codex-task
   - metric-validation
@@ -10,20 +10,21 @@ body:
     attributes:
       value: |
         本 Issue 只用于治理留痕。不要上传 Excel、CSV、台账、报表、底表、指标清单、原始导出或本地输出。
+        Use sanitized categories rather than raw customer workbook names.
   - type: input
     id: report
     attributes:
-      label: 报表
-      description: 只写报表或工作簿名，不上传文件。
-      placeholder: 例如：半收付归母净利润202512项目
+      label: 报表类别
+      description: 写脱敏后的报表类别或工作簿类别，不写原始文件名。
+      placeholder: 例如：半收付口径项目报表
     validations:
       required: true
   - type: input
     id: metric
     attributes:
-      label: 指标
-      description: 写需要验证的准确指标名。
-      placeholder: 例如：管报归母净利润_空间
+      label: 指标类别
+      description: 写脱敏后的指标类别，不粘贴完整字段口径。
+      placeholder: 例如：归母净利润类指标
     validations:
       required: true
   - type: input
@@ -31,7 +32,7 @@ body:
     attributes:
       label: 期间
       description: 报表期间。
-      placeholder: 例如：2025-12
+      placeholder: 例如：YYYY-MM
     validations:
       required: true
   - type: dropdown
@@ -50,18 +51,18 @@ body:
   - type: textarea
     id: local_files
     attributes:
-      label: 本地使用文件
-      description: 只写文件名或本地路径，不上传内容。
+      label: 本地使用文件类别
+      description: 只写文件类别或脱敏描述，不上传内容，不写原始客户文件名。
       placeholder: |
-        - JKS_数据中台二期_指标清单.xlsx
-        - 项目查询.xlsx
-        - <source report>.xlsx
+        - local-only indicator definition workbook
+        - local-only project helper ledger
+        - local-only source report workbook
     validations:
       required: false
   - type: textarea
     id: notes
     attributes:
       label: 备注
-      description: 补充范围、口径说明或已知例外。
+      description: 补充脱敏后的范围、口径摘要或已知例外。
     validations:
       required: false

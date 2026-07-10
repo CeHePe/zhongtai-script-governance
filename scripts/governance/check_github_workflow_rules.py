@@ -38,7 +38,8 @@ DOCUMENT_SENTINELS = {
     ),
     "README.md": (
         "Privacy-First Metric Validation Governance",
-        "隐私优先的指标验证治理仓库",
+        "## 中文版",
+        "## English Version",
         "What This Repository Does Not Contain",
         "本仓库不包含什么",
         "SECURITY.md",
@@ -50,13 +51,18 @@ DOCUMENT_SENTINELS = {
     "README.txt": (
         "README Routing",
         "README 路由说明",
+        "## 中文版",
+        "## English Version",
         "README.md",
         "AGENTS.md",
         "docs/github-governance.md",
     ),
     "SECURITY.md": (
         "Security Policy",
+        "## 中文版",
+        "## English Version",
         "Data Boundary",
+        "数据边界",
         "Issue And Pull Request Rules",
         "Automation Rules",
         "Incident Response",
