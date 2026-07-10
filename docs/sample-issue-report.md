@@ -2,15 +2,15 @@
 
 ## Task
 
-- Report: 半收付归母净利润202512项目
-- Metric: 示例指标_项目
-- Period: 2025-12
-- Dimension: 项目
+- Report: `<sanitized report name>`
+- Metric: `<sanitized metric name>`
+- Period: `YYYY-MM`
+- Dimension: `<dimension>`
 
 ## Result
 
 - Status: validated
-- Local data files used by name only: `JKS_数据中台二期_指标清单.xlsx`, `项目查询.xlsx`, `<source report>.xlsx`
+- Local data files used: described by category only, not by raw filename
 - Script: `scripts/validation/<validation_script>.py`
 
 ## Detail
@@ -24,5 +24,5 @@
 
 - Project rows show project code plus project-name pinyin only.
 - Professional-company rows must show pinyin only.
-- Region, line, space, and other higher dimensions may show original names.
-- Do not paste full indicator-list field descriptions or attach source workbooks.
+- Region, line, space, and other higher dimensions may show original names only when they are not customer-identifying.
+- Do not paste full indicator-list field descriptions, raw calculation logic, source workbook filenames, screenshots, or source workbook contents.

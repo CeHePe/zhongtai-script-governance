@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Applies to `C:\BMW\03 jks\02 zhongtai`.
+Applies to this repository.
 
 ## GitHub Preflight (Mandatory)
 
@@ -16,22 +16,17 @@ Applies to `C:\BMW\03 jks\02 zhongtai`.
 
 ## Core Rule
 
-Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zhongtai-metric-validation/SKILL.md) whenever the task involves:
-- testing or retesting report metrics
-- checking missing ledgers
-- explaining why a metric matches or mismatches
-- rolling project results up to region, line, space, or professional-company dimensions
+Use local-only workbooks and local validation scripts for metric testing. GitHub is only for script governance, Issue/PR traceability, and no-data checks.
 
 ## Required Workflow
 
-1. Treat `AGENTS.md` and the local metric-validation skill as the operational source of truth. `README.md` is public-facing only and `README.txt` is a routing note.
-2. Read the exact metric row in `JKS_数据中台二期_指标清单.xlsx` before computing anything.
+1. Treat `AGENTS.md` and local task-specific notes as the operational source of truth. `README.md` is public-facing only and `README.txt` is a routing note.
+2. Read the exact metric definition row in the local-only indicator workbook before computing anything.
 3. Confirm, in this order:
    - required ledgers and source reports
    - monthly vs cumulative logic
-   - D-exit exclusion
-   - (profit) non-assessment exclusion
-   - extra high-dimension adjustments
+   - exclusion rules
+   - high-dimension adjustment rules
    - whether high dimensions may aggregate from the project report
 4. Identify missing ledgers before giving a pass/fail result.
 5. Validate project dimension before higher dimensions unless the user explicitly requests an isolated higher-dimension retest. In that case, state the dependency clearly.
@@ -74,25 +69,14 @@ Follow these rules:
 - Use `codex/issue-<issue-number>-<short-topic>` for the PR branch unless the user explicitly requests another branch.
 - After the PR is created and required no-data checks pass, automatically merge it unless the user explicitly asks to keep it open, close it without merge, or wait for review.
 - After merge, run local cleanup: fetch `origin/main`, switch to `main`, fast-forward to `origin/main`, and delete the merged local `codex/...` branch with `git branch -d`. Use `http.sslBackend=schannel` and `http.version=HTTP/1.1` for fetch/push on Windows if TLS is unstable.
-- Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`; use `gh` or Git HTTPS only as a fallback because sandbox-local GitHub CLI may not read the Windows keyring.
+- Prefer the GitHub connector for Issue, comment, branch, remote file commit, and PR operations. For remote branch updates and PR creation, use the GitHub connector first instead of local `git push`; use `gh` or Git HTTPS only as a fallback.
 - Do not use `git add .`; stage explicit allowlisted files only and run `python scripts/governance/check_sensitive_files.py --staged` before any local commit.
 
 ## Data Rules
 
-- `项目查询.xlsx` is the authoritative helper ledger for project code, level, status, exit date, and region mapping.
-- `非考核项目台账.xlsx` is not a general project-helper ledger. Use it only when the indicator list requires `(利润)非考核项目` exclusion; membership means excluded non-assessment.
-- Do not infer business rules from report differences. Use only:
-  - the indicator list
-  - explicit user clarification
-  - validated project-specific exceptions documented in the local skill references
-
-## Known Project Lessons
-
-- Region-level `综管折让金额` and most `截止性收支` checks in `202512` aligned only after excluding all projects with `项目等级=D` and `项目状态=已撤场`, even if the exit date was in `2026`. Treat this as a validated project-specific case, not a universal default.
-- `华中` regional `截止性收支` also included `类型=区域` rows from `截止性收支调整台账.xlsx`.
-- `安保` minority-interest logic depends on `1.3-S经营收支表-合资公司账面口径` / indicator-library data, not the `金令金匠金颐韵涵` manual ledger.
-- `金令金匠` interest must include both `金令` and `金匠` legal entities.
-- `安保` interest can match through `威震保安` entities even when `法人与组织关系.xlsx` lacks an explicit `安保` row; report the mapping gap separately.
+- Local helper ledgers are authoritative only inside the local data environment.
+- Do not infer business rules from report differences. Use only the local indicator definition, explicit user clarification, or sanitized project notes.
+- Do not commit or quote customer-specific exceptions, entity names, project names, or workbook names in public repository files.
 
 ## Tolerance Rule
 
