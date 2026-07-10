@@ -24,7 +24,7 @@ Use the local skill at [SKILL.md](C:/BMW/03%20jks/02%20zhongtai/.codex/skills/zh
 
 ## Required Workflow
 
-1. Read `README.txt` first.
+1. Treat `AGENTS.md` and the local metric-validation skill as the operational source of truth. `README.md` is public-facing only and `README.txt` is a routing note.
 2. Read the exact metric row in `JKS_数据中台二期_指标清单.xlsx` before computing anything.
 3. Confirm, in this order:
    - required ledgers and source reports
