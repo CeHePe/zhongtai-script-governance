@@ -456,12 +456,11 @@ def validate(
             actual = report.iloc[report_index, position - 1]
             expected = row[value_column]
             finance_pass, diff = equal_value(actual, expected, True)
-            if position in {20, 26}:
-                reason = f"业财B按用户确认视作0；缺少覆盖{report_period.year}年4月至报告月的财务云A实际发生底表"
-                status = "阻塞"
-            else:
-                reason = "财务云A路径复算；业财B按用户确认视作0"
-                status = "通过" if finance_pass else "失败"
+            reason = (
+                "财务云A为全量快照，缺少4至5月记录按0；"
+                "业财B按用户确认视作0"
+            )
+            status = "通过" if finance_pass else "失败"
             add_detail(details, excel_row, code, field, actual, expected, status, reason, diff)
 
         internal_expected = {
@@ -518,13 +517,13 @@ def validate(
         {"来源": "项目主数据", "文件": project_path.name, "状态": "已读取", "说明": "区域、项目状态、条线、穿透比例"},
         {"来源": "摊销比例", "文件": RATIO_FILE, "状态": "已读取", "说明": "带资计划分年比例"},
         {"来源": "财务云历史实际", "文件": FINANCE_HISTORY_FILE, "状态": "已读取", "说明": "财务云A路径"},
-        {"来源": "财务云一季度实际", "文件": FINANCE_Q1_FILE, "状态": "已读取", "说明": "财务云A路径，覆盖至2026-03"},
+        {"来源": "财务云本年实际", "文件": FINANCE_Q1_FILE, "状态": "已读取/全量快照", "说明": "缺少4至5月记录按0"},
         {"来源": "业财实际", "文件": "", "状态": "按0处理", "说明": "用户确认业财B不存在"},
         {
             "来源": "二季度实际",
-            "文件": "",
-            "状态": "缺失",
-            "说明": f"缺覆盖{report_period.year}-04至{report_period}的财务云A底表",
+            "文件": FINANCE_Q1_FILE,
+            "状态": "已覆盖/按0",
+            "说明": f"财务云A为全量快照，{report_period.year}-04至{report_period}无记录即为0",
         },
     ]
     metadata = {
