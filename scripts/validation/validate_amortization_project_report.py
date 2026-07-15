@@ -15,7 +15,7 @@ ROOT = find_project_root(__file__)
 TOLERANCE_YUAN = 0.01
 
 REPORT_PREFIX = "1.1.4__摊销分析"
-PLAN_FILE = "带资摊销、智能化整改、质效提升计划数.xlsx"
+PLAN_FILE_PREFIX = "带资摊销、智能化整改、质效提升计划数"
 PROJECT_FILE = "项目查询.xlsx"
 RATIO_FILE = "带资摊销比例配置.xlsx"
 FINANCE_HISTORY_FILE = "财务云-实际发生数-导入结果0424.xls"
@@ -126,8 +126,15 @@ def load_report(period: str) -> tuple[Path, pd.DataFrame]:
     return path, report
 
 
+def find_latest_plan_file() -> Path:
+    candidates = [path for path in ROOT.glob(f"{PLAN_FILE_PREFIX}*.xlsx") if path.is_file()]
+    if not candidates:
+        raise FileNotFoundError(f"Plan ledger not found: {PLAN_FILE_PREFIX}*.xlsx")
+    return max(candidates, key=lambda path: (path.stat().st_mtime_ns, path.name))
+
+
 def load_plan(report_period: pd.Period) -> tuple[Path, pd.DataFrame, str]:
-    path = ROOT / PLAN_FILE
+    path = find_latest_plan_file()
     plan = pd.read_excel(path)
     months = sorted({normalize_period(value) for value in plan["数据年月"].dropna()})
     if not months:
