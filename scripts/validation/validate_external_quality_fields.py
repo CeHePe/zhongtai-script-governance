@@ -59,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         default="blocked",
         help="How to treat a project that is absent from an otherwise present source.",
     )
+    parser.add_argument(
+        "--cumulative-policy",
+        choices=("indicator-year", "entry-month", "both"),
+        default="both",
+        help="Validate cumulative cash from January, from entry month, or report both.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--summary-json", type=Path)
     return parser.parse_args()
@@ -598,7 +604,12 @@ def main() -> int:
             source_gaps["半收付底表项目缺行"] += 1
             if args.missing_row_policy == "blocked":
                 cash_status = STATUS_BLOCKED
-        window_cash = None
+        window_cash = (
+            0.0
+            if (cash_rows and near_zero(cumulative_cash))
+            or (not cash_rows and args.missing_row_policy == "zero")
+            else None
+        )
         if project_code in cash_comparative:
             comparative_cumulative, mom, comparative_month = cash_comparative[project_code]
             window_cash = comparative_month
@@ -610,7 +621,22 @@ def main() -> int:
         window_match = False
         if window_cash is not None and not math.isnan(window_cash):
             window_match, _ = compare(actual_cash, window_cash, "amount")
-        if window_cash is not None and not math.isnan(window_cash):
+        expected_cash = cumulative_cash
+        alternate_cash = window_cash
+        if args.cumulative_policy == "entry-month":
+            expected_cash = window_cash
+            alternate_cash = cumulative_cash
+            cash_note += "；采用已确认口径=从进场月开始累计"
+            if expected_cash is None or math.isnan(expected_cash):
+                cash_status = STATUS_BLOCKED
+                source_gaps["缺少进场月累计所需的上期累计值"] += 1
+            elif cash_status is None and not window_match:
+                cash_status = STATUS_FAIL
+        elif args.cumulative_policy == "indicator-year":
+            cash_note += "；采用指标清单通用口径=当年1月至报表月累计"
+            if cash_status is None and not cumulative_match:
+                cash_status = STATUS_FAIL
+        elif window_cash is not None and not math.isnan(window_cash):
             if abs(window_cash - cumulative_cash) > AMOUNT_TOLERANCE:
                 cash_status = STATUS_REVIEW
                 source_gaps["累计现金流时间窗口待确认"] += 1
@@ -626,8 +652,8 @@ def main() -> int:
             kind="amount",
             source="半收付底表",
             actual=actual_cash,
-            expected=cumulative_cash,
-            alternate=window_cash,
+            expected=expected_cash,
+            alternate=alternate_cash,
             status=cash_status,
             note=cash_note
             + f"；累计匹配={cumulative_match}；备选匹配={window_match}",
@@ -664,6 +690,7 @@ def main() -> int:
         "status_counts": dict(counts),
         "source_gaps": dict(source_gaps),
         "missing_row_policy": args.missing_row_policy,
+        "cumulative_policy": args.cumulative_policy,
         "template_evidence": template_check,
         "indicator_evidence": indicator_check,
         "field_status": {key: dict(value) for key, value in per_field.items()},
@@ -683,6 +710,7 @@ def main() -> int:
         ("缺源阻塞", counts.get(STATUS_BLOCKED, 0)),
         ("待口径确认", counts.get(STATUS_REVIEW, 0)),
         ("缺行政策", args.missing_row_policy),
+        ("累计政策", args.cumulative_policy),
         ("说明", "敏感数据仅保存在本地输出；状态按逐项目逐字段统计。"),
     ]
     for row in summary_rows:
