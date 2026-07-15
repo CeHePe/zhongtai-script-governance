@@ -73,6 +73,12 @@ FIELDS = [
     FieldSpec(25, "二季度-已摊销金额"),
     FieldSpec(26, "二季度-已发生金额"),
     FieldSpec(27, "二季度-还原金额"),
+    FieldSpec(28, "三季度-已摊销金额"),
+    FieldSpec(29, "三季度-已发生金额"),
+    FieldSpec(30, "三季度-还原金额"),
+    FieldSpec(31, "四季度-已摊销金额"),
+    FieldSpec(32, "四季度-已发生金额"),
+    FieldSpec(33, "四季度-还原金额"),
 ]
 
 
@@ -115,8 +121,8 @@ def load_report(period: str) -> tuple[Path, pd.DataFrame]:
     if not path.exists():
         raise FileNotFoundError(f"Report not found: {path.name}")
     report = pd.read_excel(path, header=[0, 1])
-    if report.shape[1] != len(FIELDS):
-        raise ValueError(f"Expected {len(FIELDS)} report fields, found {report.shape[1]}")
+    if report.shape[1] not in {27, 33}:
+        raise ValueError(f"Expected 27 or 33 report fields, found {report.shape[1]}")
     return path, report
 
 
@@ -124,10 +130,9 @@ def load_plan(report_period: pd.Period) -> tuple[Path, pd.DataFrame, str]:
     path = ROOT / PLAN_FILE
     plan = pd.read_excel(path)
     months = sorted({normalize_period(value) for value in plan["数据年月"].dropna()})
-    eligible = [month for month in months if pd.Period(month, freq="M") <= report_period]
-    if not eligible:
-        raise ValueError("No plan snapshot is on or before the report period")
-    selected = eligible[-1]
+    if not months:
+        raise ValueError("Plan ledger has no snapshot month")
+    selected = months[-1]
     plan = plan[plan["数据年月"].map(normalize_period).eq(selected)].copy()
     return path, plan, selected
 
@@ -234,11 +239,21 @@ def calculate_plan_groups(
     penetration = (
         project.drop_duplicates("立项编码").set_index("立项编码")["穿透比例"].to_dict()
     )
+
+    def quarter_range(start_month: int, end_month: int) -> pd.PeriodIndex:
+        start = pd.Period(f"{report_period.year}-{start_month:02d}", freq="M")
+        end = min(pd.Period(f"{report_period.year}-{end_month:02d}", freq="M"), report_period)
+        if end < start:
+            return pd.PeriodIndex([], freq="M")
+        return pd.period_range(start, end, freq="M")
+
     periods = {
         "prior_plan": pd.period_range("2000-01", f"{report_period.year - 1}-12", freq="M"),
         "current_plan": pd.period_range(f"{report_period.year}-01", report_period, freq="M"),
-        "q1_plan": pd.period_range(f"{report_period.year}-01", f"{report_period.year}-03", freq="M"),
-        "q2_plan": pd.period_range(f"{report_period.year}-04", report_period, freq="M"),
+        "q1_plan": quarter_range(1, 3),
+        "q2_plan": quarter_range(4, 6),
+        "q3_plan": quarter_range(7, 9),
+        "q4_plan": quarter_range(10, 12),
     }
     records: list[dict[str, object]] = []
     for _, row in plan_rows.iterrows():
@@ -296,19 +311,31 @@ def aggregate_finance_actuals(
     actual = actual.copy()
     actual["value"] = actual["raw"] * 0.81 * actual["code"].map(penetration).fillna(1.0)
     prior_end = pd.Timestamp(f"{report_period.year - 1}-12-31 23:59:59")
-    q1_end = pd.Timestamp(f"{report_period.year}-03-31 23:59:59")
-    q2_start = pd.Timestamp(f"{report_period.year}-04-01")
     report_end = report_period.end_time
     actual["prior_actual"] = actual["value"].where(actual["date"] <= prior_end, 0.0)
-    actual["q1_actual"] = actual["value"].where(
-        (actual["date"] > prior_end) & (actual["date"] <= q1_end), 0.0
-    )
-    actual["q2_actual"] = actual["value"].where(
-        (actual["date"] >= q2_start) & (actual["date"] <= report_end), 0.0
-    )
-    actual["current_actual"] = actual["q1_actual"] + actual["q2_actual"]
+    for quarter, start_month, end_month in (
+        (1, 1, 3),
+        (2, 4, 6),
+        (3, 7, 9),
+        (4, 10, 12),
+    ):
+        start = pd.Timestamp(f"{report_period.year}-{start_month:02d}-01")
+        end = min(pd.Period(f"{report_period.year}-{end_month:02d}", freq="M").end_time, report_end)
+        actual[f"q{quarter}_actual"] = actual["value"].where(
+            (actual["date"] >= start) & (actual["date"] <= end), 0.0
+        )
+    actual["current_actual"] = actual[
+        ["q1_actual", "q2_actual", "q3_actual", "q4_actual"]
+    ].sum(axis=1)
     return actual.groupby(["code", "type"], as_index=False)[
-        ["prior_actual", "current_actual", "q1_actual", "q2_actual"]
+        [
+            "prior_actual",
+            "current_actual",
+            "q1_actual",
+            "q2_actual",
+            "q3_actual",
+            "q4_actual",
+        ]
     ].sum()
 
 
@@ -343,6 +370,7 @@ def validate(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, object]]:
     report_period = pd.Period(f"{period[:4]}-{period[4:6]}", freq="M")
     report_path, report = load_report(period)
+    active_fields = FIELDS[: report.shape[1]]
     plan_path, plan, plan_snapshot = load_plan(report_period)
     project_path = ROOT / PROJECT_FILE
     project = pd.read_excel(project_path)
@@ -356,7 +384,14 @@ def validate(
     finance_groups = aggregate_finance_actuals(finance_actual_rows, project, report_period)
     mapped = mapped.merge(plan_groups, on=["code", "type"], how="left")
     mapped = mapped.merge(finance_groups, on=["code", "type"], how="left")
-    for column in ["prior_actual", "current_actual", "q1_actual", "q2_actual"]:
+    for column in [
+        "prior_actual",
+        "current_actual",
+        "q1_actual",
+        "q2_actual",
+        "q3_actual",
+        "q4_actual",
+    ]:
         mapped[column] = mapped[column].fillna(0.0)
 
     details: list[dict[str, object]] = []
@@ -365,15 +400,30 @@ def validate(
         19: ("current_plan", "current_plan_blocked"),
         22: ("q1_plan", "q1_plan_blocked"),
         25: ("q2_plan", "q2_plan_blocked"),
+        28: ("q3_plan", "q3_plan_blocked"),
+        31: ("q4_plan", "q4_plan_blocked"),
     }
-    actual_fields = {17: "prior_actual", 20: "current_actual", 23: "q1_actual", 26: "q2_actual"}
+    actual_fields = {
+        17: "prior_actual",
+        20: "current_actual",
+        23: "q1_actual",
+        26: "q2_actual",
+        29: "q3_actual",
+        32: "q4_actual",
+    }
+    period_fields = {
+        position: spec for position, spec in period_fields.items() if position <= report.shape[1]
+    }
+    actual_fields = {
+        position: column for position, column in actual_fields.items() if position <= report.shape[1]
+    }
 
     for _, row in mapped.iterrows():
         report_index = int(row["report_index"])
         excel_row = int(row["excel_row"])
         code = "" if pd.isna(row.get("code")) else str(row["code"])
         if not code:
-            for field in FIELDS:
+            for field in active_fields:
                 add_detail(
                     details,
                     excel_row,
@@ -457,7 +507,7 @@ def validate(
             expected = row[value_column]
             finance_pass, diff = equal_value(actual, expected, True)
             reason = (
-                "财务云A为全量快照，缺少4至5月记录按0；"
+                "财务云A为全量快照，无记录按0；"
                 "业财B按用户确认视作0"
             )
             status = "通过" if finance_pass else "失败"
@@ -475,6 +525,15 @@ def validate(
             24: as_number(report.iloc[report_index, 22]) - as_number(report.iloc[report_index, 21]),
             27: as_number(report.iloc[report_index, 25]) - as_number(report.iloc[report_index, 24]),
         }
+        if report.shape[1] >= 33:
+            internal_expected.update(
+                {
+                    30: as_number(report.iloc[report_index, 28])
+                    - as_number(report.iloc[report_index, 27]),
+                    33: as_number(report.iloc[report_index, 31])
+                    - as_number(report.iloc[report_index, 30]),
+                }
+            )
         for position, expected in internal_expected.items():
             field = FIELDS[position - 1]
             actual = report.iloc[report_index, position - 1]
@@ -513,18 +572,12 @@ def validate(
 
     source_rows = [
         {"来源": "待测报表", "文件": report_path.name, "状态": "已读取", "说明": f"期间={period}, 维度=项目"},
-        {"来源": "计划台账", "文件": plan_path.name, "状态": "已读取", "说明": f"按用户确认取最近季度快照={plan_snapshot}"},
+        {"来源": "计划台账", "文件": plan_path.name, "状态": "已读取", "说明": f"按用户确认取当前最近季度快照={plan_snapshot}，不因快照晚于报表期间而阻塞"},
         {"来源": "项目主数据", "文件": project_path.name, "状态": "已读取", "说明": "区域、项目状态、条线、穿透比例"},
         {"来源": "摊销比例", "文件": RATIO_FILE, "状态": "已读取", "说明": "带资计划分年比例"},
-        {"来源": "财务云历史实际", "文件": FINANCE_HISTORY_FILE, "状态": "已读取", "说明": "财务云A路径"},
-        {"来源": "财务云本年实际", "文件": FINANCE_Q1_FILE, "状态": "已读取/全量快照", "说明": "缺少4至5月记录按0"},
+        {"来源": "财务云实际", "文件": FINANCE_HISTORY_FILE, "状态": "已读取/全量快照", "说明": "财务云A路径，无记录按0"},
+        {"来源": "财务云补充实际", "文件": FINANCE_Q1_FILE, "状态": "已读取", "说明": "按审批通过时间归入对应报告期间"},
         {"来源": "业财实际", "文件": "", "状态": "按0处理", "说明": "用户确认业财B不存在"},
-        {
-            "来源": "二季度实际",
-            "文件": FINANCE_Q1_FILE,
-            "状态": "已覆盖/按0",
-            "说明": f"财务云A为全量快照，{report_period.year}-04至{report_period}无记录即为0",
-        },
     ]
     metadata = {
         "report_rows": len(report),
