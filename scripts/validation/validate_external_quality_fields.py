@@ -55,6 +55,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--current-receivable-aging", type=Path)
     parser.add_argument("--occupancy-source", type=Path)
     parser.add_argument("--amortization-source", type=Path)
+    parser.add_argument("--cumulative-accrual-source", type=Path)
+    parser.add_argument("--cumulative-half-cash-source", type=Path)
+    parser.add_argument(
+        "--cumulative-financial-policy",
+        choices=("direct-range", "sum-period-sources"),
+        default="direct-range",
+        help="Use direct entry-to-report sources or sum first/current period sources.",
+    )
+    parser.add_argument(
+        "--report-period",
+        help="Report period in YYYYMM form; required for the full field set.",
+    )
+    parser.add_argument(
+        "--confirmed-absent-project-code",
+        action="append",
+        default=[],
+        help="Project code explicitly confirmed absent from the report-period projection ledger.",
+    )
     parser.add_argument(
         "--field-set",
         choices=("original", "external-full"),
@@ -197,6 +215,11 @@ def year_from_period(value: Any) -> str:
     text = norm_text(value)
     match = re.match(r"^(\d{4})", text)
     return match.group(1) if match else ""
+
+
+def normalized_period(value: Any) -> str:
+    digits = re.sub(r"\D", "", norm_text(value))
+    return digits[:6] if len(digits) >= 6 else ""
 
 
 def xlsx_cells_without_styles(path: Path) -> dict[str, dict[str, str]]:
@@ -346,20 +369,28 @@ def main() -> int:
     ]
     extended_paths = [
         args.accrual_source,
-        args.current_accrual_source,
-        args.current_half_cash_source,
         args.current_business_aging,
         args.current_receivable_aging,
         args.occupancy_source,
         args.amortization_source,
     ]
     if args.field_set == "external-full":
+        if not args.report_period or not re.fullmatch(r"\d{6}", args.report_period):
+            raise ValueError("external-full requires --report-period YYYYMM")
         if any(path is None for path in extended_paths):
             raise ValueError(
                 "external-full requires accrual, current, occupancy, and "
                 "amortization source arguments"
             )
         input_paths.extend(path for path in extended_paths if path is not None)
+        for optional_path in (
+            args.current_accrual_source,
+            args.current_half_cash_source,
+            args.cumulative_accrual_source,
+            args.cumulative_half_cash_source,
+        ):
+            if optional_path is not None:
+                input_paths.append(optional_path)
     if args.cash_comparative_report:
         input_paths.append(args.cash_comparative_report)
     missing_files = [str(path) for path in input_paths if not path.exists()]
@@ -380,16 +411,20 @@ def main() -> int:
     current_half_cash_map: dict[str, list[tuple[Any, ...]]] = {}
     current_business_map: dict[str, list[tuple[Any, ...]]] = {}
     current_receivable_map: dict[str, list[tuple[Any, ...]]] = {}
+    cumulative_accrual_map: dict[str, list[tuple[Any, ...]]] = {}
+    cumulative_half_cash_map: dict[str, list[tuple[Any, ...]]] = {}
     occupancy_map: dict[str, list[tuple[Any, ...]]] = defaultdict(list)
     amortization_map: dict[str, list[tuple[Any, ...]]] = {}
     if args.field_set == "external-full":
         accrual_sheet, accrual_map = rows_by_key(args.accrual_source, 6, 1)
-        current_accrual_sheet, current_accrual_map = rows_by_key(
-            args.current_accrual_source, 6, 1
-        )
-        current_half_cash_sheet, current_half_cash_map = rows_by_key(
-            args.current_half_cash_source, 6, 1
-        )
+        if args.current_accrual_source:
+            current_accrual_sheet, current_accrual_map = rows_by_key(
+                args.current_accrual_source, 6, 1
+            )
+        if args.current_half_cash_source:
+            current_half_cash_sheet, current_half_cash_map = rows_by_key(
+                args.current_half_cash_source, 6, 1
+            )
         current_business_sheet, current_business_map = rows_by_key(
             args.current_business_aging, 5, 1
         )
@@ -404,6 +439,14 @@ def main() -> int:
         amortization_sheet, amortization_map = rows_by_key(
             args.amortization_source, 3, 2
         )
+        if args.cumulative_accrual_source:
+            cumulative_accrual_sheet, cumulative_accrual_map = rows_by_key(
+                args.cumulative_accrual_source, 6, 1
+            )
+        if args.cumulative_half_cash_source:
+            cumulative_half_cash_sheet, cumulative_half_cash_map = rows_by_key(
+                args.cumulative_half_cash_source, 6, 1
+            )
 
     # Force structural checks so a wrong workbook fails loudly.
     find_header_row(project_sheet, "立项编码")
@@ -414,12 +457,18 @@ def main() -> int:
     find_header_row(half_cash_sheet, "累计回收现金流")
     if args.field_set == "external-full":
         find_header_row(accrual_sheet, "立项编码")
-        find_header_row(current_accrual_sheet, "立项编码")
-        find_header_row(current_half_cash_sheet, "累计回收现金流")
+        if args.current_accrual_source:
+            find_header_row(current_accrual_sheet, "立项编码")
+        if args.current_half_cash_source:
+            find_header_row(current_half_cash_sheet, "累计回收现金流")
         find_header_row(current_business_sheet, "应收余额")
         find_header_row(current_receivable_sheet, "大业主应收金额 （单位：元）")
         find_header_row(occupancy_sheet, "项目编号")
         find_header_row(amortization_sheet, "项目")
+        if args.cumulative_accrual_source:
+            find_header_row(cumulative_accrual_sheet, "立项编码")
+        if args.cumulative_half_cash_source:
+            find_header_row(cumulative_half_cash_sheet, "累计回收现金流")
 
     template_check = template_evidence(args.template)
     indicator_check = indicator_evidence(args.indicator_list)
@@ -427,6 +476,35 @@ def main() -> int:
         raise ValueError(
             f"Template/indicator evidence incomplete: {template_check}, {indicator_check}"
         )
+
+    saturation_period_available = True
+    projection_period_available = True
+    cumulative_financial_available = False
+    if args.field_set == "external-full":
+        saturation_period_available = any(
+            normalized_period(row[2]) == args.report_period
+            for rows in saturation_map.values()
+            for row in rows
+        )
+        projection_period_available = any(
+            normalized_period(row[0]) == args.report_period
+            for rows in projection_map.values()
+            for row in rows
+        )
+        if bool(args.cumulative_accrual_source) != bool(
+            args.cumulative_half_cash_source
+        ):
+            raise ValueError(
+                "Provide both cumulative accrual and cumulative half-cash sources, or neither"
+            )
+        if args.cumulative_financial_policy == "sum-period-sources":
+            if not args.current_accrual_source or not args.current_half_cash_source:
+                raise ValueError(
+                    "sum-period-sources requires current accrual and half-cash sources"
+                )
+            cumulative_financial_available = True
+        else:
+            cumulative_financial_available = bool(args.cumulative_accrual_source)
 
     field_specs = [
         (11, "K", "合资公司名称", "text", "项目主数据"),
@@ -554,6 +632,17 @@ def main() -> int:
         project_rows = project_map.get(project_code, [])
         saturation_rows = saturation_map.get(project_code, [])
         projection_rows = projection_map.get(project_code, [])
+        if args.field_set == "external-full":
+            saturation_rows = [
+                row
+                for row in saturation_rows
+                if normalized_period(row[2]) == args.report_period
+            ]
+            projection_rows = [
+                row
+                for row in projection_rows
+                if normalized_period(row[0]) == args.report_period
+            ]
         business_rows = business_map.get(project_code, [])
         receivable_rows = receivable_map.get(project_code, [])
         cash_rows = half_cash_map.get(project_code, [])
@@ -589,7 +678,11 @@ def main() -> int:
             )
 
         saturation_status: str | None = None
-        if not saturation_rows:
+        if args.field_set == "external-full" and not saturation_period_available:
+            source_gaps["年饱和台账缺报表期间数据"] += 1
+            saturation_expected = {13: "", 14: 0.0}
+            saturation_status = STATUS_BLOCKED
+        elif not saturation_rows:
             source_gaps["年饱和台账项目缺行"] += 1
             saturation_expected = {13: "", 14: 0.0}
             saturation_status = (
@@ -617,12 +710,28 @@ def main() -> int:
                 actual=report_row[index - 1],
                 expected=saturation_expected[index],
                 status=saturation_status,
-                note="无匹配行" if not saturation_rows else f"匹配行数={len(saturation_rows)}",
+                note=(
+                    f"源台账无报表期间={args.report_period}的数据"
+                    if args.field_set == "external-full"
+                    and not saturation_period_available
+                    else "无匹配行"
+                    if not saturation_rows
+                    else f"匹配行数={len(saturation_rows)}"
+                ),
             )
 
         projection_status: str | None = None
         projection = first_or_none(projection_rows)
-        if projection is None:
+        confirmed_absent = project_code in set(args.confirmed_absent_project_code)
+        if (
+            args.field_set == "external-full"
+            and not projection_period_available
+            and not confirmed_absent
+        ):
+            source_gaps["投模台账缺报表期间数据"] += 1
+            projection_status = STATUS_BLOCKED
+            projection_values = [0.0] * 15
+        elif projection is None:
             reason = "项目缺行" if not projection_rows else "项目重复"
             source_gaps[f"投模台账{reason}"] += 1
             projection_status = STATUS_BLOCKED
@@ -660,7 +769,16 @@ def main() -> int:
                 actual=report_row[index - 1],
                 expected=direct_projection[index],
                 status=projection_status,
-                note="无匹配行" if not projection_rows else f"匹配行数={len(projection_rows)}",
+                note=(
+                    "用户已确认项目在报表期间投模台账缺行，按0"
+                    if confirmed_absent and not projection_rows
+                    else f"源台账无报表期间={args.report_period}的数据"
+                    if args.field_set == "external-full"
+                    and not projection_period_available
+                    else "无匹配行"
+                    if not projection_rows
+                    else f"匹配行数={len(projection_rows)}"
+                ),
             )
 
         # Report-layer formulas are validated using the report's own upstream fields.
@@ -705,6 +823,8 @@ def main() -> int:
 
         if args.field_set == "external-full":
             accrual_rows = accrual_map.get(project_code, [])
+            cumulative_accrual_rows = cumulative_accrual_map.get(project_code, [])
+            cumulative_half_rows = cumulative_half_cash_map.get(project_code, [])
             current_accrual_rows = current_accrual_map.get(project_code, [])
             current_half_rows = current_half_cash_map.get(project_code, [])
             current_business_rows = current_business_map.get(project_code, [])
@@ -736,8 +856,6 @@ def main() -> int:
             for label, rows in (
                 ("首年权责底表项目缺行", accrual_rows),
                 ("首年半收付底表项目缺行", cash_rows),
-                ("当前权责底表项目缺行", current_accrual_rows),
-                ("当前半收付底表项目缺行", current_half_rows),
                 ("首年业务账龄项目缺行", business_rows),
                 ("首年应收账龄项目缺行", receivable_rows),
                 ("当前业务账龄项目缺行", current_business_rows),
@@ -836,21 +954,36 @@ def main() -> int:
             for index, expected in deviation_formula.items():
                 add_extended(index, expected, "按模板偏差公式，以本报表上游字段复算")
 
-            cumulative_revenue = first_revenue + sum_index(current_accrual_rows, 11)
-            cumulative_semi_revenue = first_semi_revenue + sum_index(current_half_rows, 12)
-            cumulative_cost = first_cost + sum_index(current_accrual_rows, 25)
-            cumulative_own_cost = (
-                first_own_cost
-                + sum_index(current_accrual_rows, 26)
-                + sum_index(current_accrual_rows, 27)
-            )
-            cumulative_outsource_cost = first_outsource_cost + sum_index(
-                current_accrual_rows, 26
-            )
-            cumulative_energy_cost = first_energy_cost + sum_index(
-                current_accrual_rows, 29
-            )
-            cumulative_cash = first_cash + sum_index(current_half_rows, 10)
+            if args.cumulative_financial_policy == "sum-period-sources":
+                cumulative_revenue = first_revenue + sum_index(
+                    current_accrual_rows, 11
+                )
+                cumulative_semi_revenue = first_semi_revenue + sum_index(
+                    current_half_rows, 12
+                )
+                cumulative_cost = first_cost + sum_index(current_accrual_rows, 25)
+                cumulative_own_cost = (
+                    first_own_cost
+                    + sum_index(current_accrual_rows, 26)
+                    + sum_index(current_accrual_rows, 27)
+                )
+                cumulative_outsource_cost = first_outsource_cost + sum_index(
+                    current_accrual_rows, 26
+                )
+                cumulative_energy_cost = first_energy_cost + sum_index(
+                    current_accrual_rows, 29
+                )
+                cumulative_cash = first_cash + sum_index(current_half_rows, 10)
+            else:
+                cumulative_revenue = sum_index(cumulative_accrual_rows, 11)
+                cumulative_semi_revenue = sum_index(cumulative_half_rows, 12)
+                cumulative_cost = sum_index(cumulative_accrual_rows, 25)
+                cumulative_own_cost = sum_index(
+                    cumulative_accrual_rows, 26
+                ) + sum_index(cumulative_accrual_rows, 27)
+                cumulative_outsource_cost = sum_index(cumulative_accrual_rows, 26)
+                cumulative_energy_cost = sum_index(cumulative_accrual_rows, 29)
+                cumulative_cash = sum_index(cumulative_half_rows, 10)
             cumulative_receivable = sum_index(current_business_rows, 11) + sum_index(
                 current_receivable_rows, 8
             )
@@ -867,10 +1000,25 @@ def main() -> int:
                 100: cumulative_not_due,
             }
             for index, expected in cumulative_direct.items():
+                status = None
+                financial_index = index in {90, 91, 94, 95, 96, 97, 98}
+                if financial_index and not cumulative_financial_available:
+                    status = STATUS_BLOCKED
+                    source_gaps["缺进场月至报表月直接区间财务底表"] += 1
                 add_extended(
                     index,
                     expected,
-                    "进场后累计=首年累计底表+当前年度累计底表；缺失项目行按0",
+                    (
+                        "缺少从进场月至报表月的直接区间权责及半收付底表"
+                        if financial_index and not cumulative_financial_available
+                        else "累计财务按用户确认口径=首期累计底表+当前期累计底表"
+                        if financial_index
+                        and args.cumulative_financial_policy == "sum-period-sources"
+                        else "使用报表月账龄底表；项目缺行按0"
+                        if not financial_index
+                        else "使用从进场月至报表月的直接区间底表；项目缺行按0"
+                    ),
+                    status,
                 )
 
             cumulative_formula = {
@@ -1007,6 +1155,7 @@ def main() -> int:
         "field_set": args.field_set,
         "missing_row_policy": args.missing_row_policy,
         "cumulative_policy": args.cumulative_policy,
+        "cumulative_financial_policy": args.cumulative_financial_policy,
         "template_evidence": template_check,
         "indicator_evidence": indicator_check,
         "field_status": {key: dict(value) for key, value in per_field.items()},
@@ -1028,6 +1177,7 @@ def main() -> int:
         ("缺行政策", args.missing_row_policy),
         ("字段集", args.field_set),
         ("累计政策", args.cumulative_policy),
+        ("累计财务来源政策", args.cumulative_financial_policy),
         ("说明", "敏感数据仅保存在本地输出；状态按逐项目逐字段统计。"),
     ]
     for row in summary_rows:
