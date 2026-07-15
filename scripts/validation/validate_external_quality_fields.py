@@ -48,6 +48,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--business-aging", type=Path, required=True)
     parser.add_argument("--receivable-aging", type=Path, required=True)
     parser.add_argument("--half-cash-source", type=Path, required=True)
+    parser.add_argument("--accrual-source", type=Path)
+    parser.add_argument("--current-accrual-source", type=Path)
+    parser.add_argument("--current-half-cash-source", type=Path)
+    parser.add_argument("--current-business-aging", type=Path)
+    parser.add_argument("--current-receivable-aging", type=Path)
+    parser.add_argument("--occupancy-source", type=Path)
+    parser.add_argument("--amortization-source", type=Path)
+    parser.add_argument(
+        "--field-set",
+        choices=("original", "external-full"),
+        default="original",
+        help="Select the report field family to validate.",
+    )
     parser.add_argument(
         "--cash-comparative-report",
         type=Path,
@@ -161,6 +174,23 @@ def normalized_entry_month(value: Any) -> str:
     offset = 1 if parsed.day >= 15 else 0
     year, month = add_months(parsed.year, parsed.month, offset)
     return f"{year:04d}-{month:02d}"
+
+
+def shifted_period(value: Any, months: int) -> str:
+    period = normalized_entry_month(value)
+    if not period:
+        return ""
+    year, month = (int(part) for part in period.split("-"))
+    year, month = add_months(year, month, months)
+    return f"{year:04d}-{month:02d}"
+
+
+def normalized_project_code(value: Any) -> str:
+    """Normalize reports that inconsistently omit the leading project type."""
+    text = norm_text(value)
+    if len(text) > 1 and text[0] in {"P", "D", "Z"} and text[1].isdigit():
+        return text[1:]
+    return text
 
 
 def year_from_period(value: Any) -> str:
@@ -314,6 +344,22 @@ def main() -> int:
         args.receivable_aging,
         args.half_cash_source,
     ]
+    extended_paths = [
+        args.accrual_source,
+        args.current_accrual_source,
+        args.current_half_cash_source,
+        args.current_business_aging,
+        args.current_receivable_aging,
+        args.occupancy_source,
+        args.amortization_source,
+    ]
+    if args.field_set == "external-full":
+        if any(path is None for path in extended_paths):
+            raise ValueError(
+                "external-full requires accrual, current, occupancy, and "
+                "amortization source arguments"
+            )
+        input_paths.extend(path for path in extended_paths if path is not None)
     if args.cash_comparative_report:
         input_paths.append(args.cash_comparative_report)
     missing_files = [str(path) for path in input_paths if not path.exists()]
@@ -329,6 +375,36 @@ def main() -> int:
     half_cash_sheet, half_cash_map = rows_by_key(args.half_cash_source, 6, 1)
     cash_comparative = build_cash_comparative(args.cash_comparative_report)
 
+    accrual_map: dict[str, list[tuple[Any, ...]]] = {}
+    current_accrual_map: dict[str, list[tuple[Any, ...]]] = {}
+    current_half_cash_map: dict[str, list[tuple[Any, ...]]] = {}
+    current_business_map: dict[str, list[tuple[Any, ...]]] = {}
+    current_receivable_map: dict[str, list[tuple[Any, ...]]] = {}
+    occupancy_map: dict[str, list[tuple[Any, ...]]] = defaultdict(list)
+    amortization_map: dict[str, list[tuple[Any, ...]]] = {}
+    if args.field_set == "external-full":
+        accrual_sheet, accrual_map = rows_by_key(args.accrual_source, 6, 1)
+        current_accrual_sheet, current_accrual_map = rows_by_key(
+            args.current_accrual_source, 6, 1
+        )
+        current_half_cash_sheet, current_half_cash_map = rows_by_key(
+            args.current_half_cash_source, 6, 1
+        )
+        current_business_sheet, current_business_map = rows_by_key(
+            args.current_business_aging, 5, 1
+        )
+        current_receivable_sheet, current_receivable_map = rows_by_key(
+            args.current_receivable_aging, 3, 4
+        )
+        occupancy_sheet = read_sheet(args.occupancy_source, data_only=True)
+        for row in occupancy_sheet.iter_rows(min_row=3, values_only=True):
+            code = normalized_project_code(row[3] if len(row) > 3 else None)
+            if code:
+                occupancy_map[code].append(row)
+        amortization_sheet, amortization_map = rows_by_key(
+            args.amortization_source, 3, 2
+        )
+
     # Force structural checks so a wrong workbook fails loudly.
     find_header_row(project_sheet, "立项编码")
     find_header_row(saturation_sheet, "业绩认定年月")
@@ -336,6 +412,14 @@ def main() -> int:
     find_header_row(business_sheet, "应收余额")
     find_header_row(receivable_sheet, "大业主应收金额 （单位：元）")
     find_header_row(half_cash_sheet, "累计回收现金流")
+    if args.field_set == "external-full":
+        find_header_row(accrual_sheet, "立项编码")
+        find_header_row(current_accrual_sheet, "立项编码")
+        find_header_row(current_half_cash_sheet, "累计回收现金流")
+        find_header_row(current_business_sheet, "应收余额")
+        find_header_row(current_receivable_sheet, "大业主应收金额 （单位：元）")
+        find_header_row(occupancy_sheet, "项目编号")
+        find_header_row(amortization_sheet, "项目")
 
     template_check = template_evidence(args.template)
     indicator_check = indicator_evidence(args.indicator_list)
@@ -378,7 +462,53 @@ def main() -> int:
         (41, "AO", "未到账期金额", "amount", "账龄底表"),
         (42, "AP", "回款率", "ratio", "报表公式"),
     ]
+    if args.field_set == "external-full":
+        field_specs = [item for item in field_specs if item[0] <= 37]
+        field_specs.extend(
+            [
+                (63, "BK", "首年时间", "text", "项目主数据"),
+                (64, "BL", "首年营业收入", "amount", "首年权责底表"),
+                (65, "BM", "首年半收付收入", "amount", "首年半收付底表"),
+                (66, "BN", "首年权责税前利润", "amount", "报表公式"),
+                (67, "BO", "首年半收付税前利润", "amount", "报表公式"),
+                (68, "BP", "首年营业成本", "amount", "首年权责底表"),
+                (69, "BQ", "首年自有成本", "amount", "首年权责底表"),
+                (70, "BR", "首年外包成本", "amount", "首年权责底表"),
+                (71, "BS", "首年能耗成本", "amount", "首年权责底表"),
+                (72, "BT", "首年累计回收现金流", "amount", "首年半收付底表"),
+                (73, "BU", "首年应收余额", "amount", "首年账龄底表"),
+                (74, "BV", "首年未到账期", "amount", "首年账龄底表"),
+                (75, "BW", "首年回款率", "ratio", "报表公式"),
+                (76, "BX", "首年带资投入费用", "amount", "摊销分析底表"),
+                (77, "BY", "首年实际运营入住率", "ratio", "大额欠费分析"),
+                (78, "BZ", "首年营业收入偏差", "amount", "报表公式"),
+                (79, "CA", "首年半收付收入偏差", "amount", "报表公式"),
+                (80, "CB", "首年权责税前利润偏差", "amount", "报表公式"),
+                (81, "CC", "首年半收付税前利润偏差", "amount", "报表公式"),
+                (82, "CD", "首年权责税前利润率偏差", "ratio", "报表公式"),
+                (83, "CE", "首年半收付税前利润率偏差", "ratio", "报表公式"),
+                (84, "CF", "首年营业成本偏差", "amount", "报表公式"),
+                (85, "CG", "首年带资使用偏差", "amount", "报表公式"),
+                (86, "CH", "首年自有成本偏差", "amount", "报表公式"),
+                (87, "CI", "首年外包成本偏差", "amount", "报表公式"),
+                (88, "CJ", "首年能耗成本偏差", "amount", "报表公式"),
+                (89, "CK", "首年回款率偏差", "ratio", "报表公式"),
+                (90, "CL", "进场后累计营业收入", "amount", "权责底表"),
+                (91, "CM", "进场后累计半收付收入", "amount", "半收付底表"),
+                (92, "CN", "进场后累计权责税前利润", "amount", "报表公式"),
+                (93, "CO", "进场后累计半收付税前利润", "amount", "报表公式"),
+                (94, "CP", "进场后累计营业成本", "amount", "权责底表"),
+                (95, "CQ", "进场后累计自有成本", "amount", "权责底表"),
+                (96, "CR", "进场后累计外包成本", "amount", "权责底表"),
+                (97, "CS", "进场后累计能耗成本", "amount", "权责底表"),
+                (98, "CT", "进场后累计回收现金流", "amount", "半收付底表"),
+                (99, "CU", "进场后累计应收余额", "amount", "账龄底表"),
+                (100, "CV", "进场后累计未到账期", "amount", "账龄底表"),
+                (101, "CW", "进场后累计综合回款率", "ratio", "报表公式"),
+            ]
+        )
 
+    field_spec_by_index = {item[0]: item for item in field_specs}
     details: list[dict[str, Any]] = []
     source_gaps: Counter[str] = Counter()
 
@@ -431,13 +561,14 @@ def main() -> int:
         project = first_or_none(project_rows)
         if project is None:
             source_gaps["项目主数据缺行或重复"] += 1
-            project_expected = {11: None, 12: None, 38: None}
+            project_expected = {11: None, 12: None, 38: None, 63: None}
             project_status = STATUS_BLOCKED
         else:
             project_expected = {
                 11: project[7],
                 12: number(project[9]),
                 38: normalized_entry_month(project[12]),
+                63: shifted_period(project[12], 11),
             }
             project_status = None
 
@@ -572,6 +703,190 @@ def main() -> int:
                 note="按模板报表层公式，以本报表上游字段复算",
             )
 
+        if args.field_set == "external-full":
+            accrual_rows = accrual_map.get(project_code, [])
+            current_accrual_rows = current_accrual_map.get(project_code, [])
+            current_half_rows = current_half_cash_map.get(project_code, [])
+            current_business_rows = current_business_map.get(project_code, [])
+            current_receivable_rows = current_receivable_map.get(project_code, [])
+            occupancy_rows = occupancy_map.get(normalized_project_code(project_code), [])
+            project_name = norm_text(report_row[2] if len(report_row) > 2 else None)
+            amortization_rows = amortization_map.get(project_name, [])
+
+            def add_extended(
+                index: int,
+                expected: Any,
+                note: str,
+                status: str | None = None,
+            ) -> None:
+                spec = field_spec_by_index[index]
+                add_result(
+                    row_number_value=excel_row,
+                    project_code=project_code,
+                    column=spec[1],
+                    field=spec[2],
+                    kind=spec[3],
+                    source=spec[4],
+                    actual=report_row[index - 1],
+                    expected=expected,
+                    status=status,
+                    note=note,
+                )
+
+            for label, rows in (
+                ("首年权责底表项目缺行", accrual_rows),
+                ("首年半收付底表项目缺行", cash_rows),
+                ("当前权责底表项目缺行", current_accrual_rows),
+                ("当前半收付底表项目缺行", current_half_rows),
+                ("首年业务账龄项目缺行", business_rows),
+                ("首年应收账龄项目缺行", receivable_rows),
+                ("当前业务账龄项目缺行", current_business_rows),
+                ("当前应收账龄项目缺行", current_receivable_rows),
+            ):
+                if not rows:
+                    source_gaps[label] += 1
+
+            first_revenue = sum_index(accrual_rows, 11)
+            first_semi_revenue = sum_index(cash_rows, 12)
+            first_cost = sum_index(accrual_rows, 25)
+            first_own_cost = sum_index(accrual_rows, 26) + sum_index(accrual_rows, 27)
+            first_outsource_cost = sum_index(accrual_rows, 26)
+            first_energy_cost = sum_index(accrual_rows, 29)
+            first_cash = sum_index(cash_rows, 10)
+            first_receivable = sum_index(business_rows, 11) + sum_index(receivable_rows, 8)
+            first_not_due = sum_index(receivable_rows, 14)
+            first_direct = {
+                64: first_revenue,
+                65: first_semi_revenue,
+                68: first_cost,
+                69: first_own_cost,
+                70: first_outsource_cost,
+                71: first_energy_cost,
+                72: first_cash,
+                73: first_receivable,
+                74: first_not_due,
+            }
+            for index, expected in first_direct.items():
+                add_extended(
+                    index,
+                    expected,
+                    "首年累计底表；项目缺行按0计算",
+                )
+
+            first_formula = {
+                66: number(report_row[63]) - number(report_row[67]),
+                67: number(report_row[64]) - number(report_row[67]),
+                75: safe_ratio(
+                    number(report_row[71]),
+                    number(report_row[71])
+                    + number(report_row[72])
+                    - number(report_row[73]),
+                ),
+            }
+            for index, expected in first_formula.items():
+                add_extended(index, expected, "按模板公式，以本报表上游字段复算")
+
+            financed_rows = [
+                row
+                for row in amortization_rows
+                if norm_text(row[6] if len(row) > 6 else None) == "带资摊销"
+            ]
+            financed_input_actual = sum_index(financed_rows, 9)
+            if not financed_rows:
+                source_gaps["摊销分析无带资摊销行"] += 1
+            add_extended(
+                76,
+                financed_input_actual,
+                f"项目名匹配行={len(amortization_rows)}；带资摊销行={len(financed_rows)}；缺行按0",
+            )
+
+            occupancy_status: str | None = None
+            if not occupancy_rows:
+                source_gaps["入住率底表项目缺行"] += 1
+                occupancy_expected = 0.0
+            elif len(occupancy_rows) == 1:
+                occupancy_expected = number(occupancy_rows[0][9])
+            else:
+                source_gaps["入住率底表项目重复"] += 1
+                occupancy_expected = number(occupancy_rows[0][9])
+                occupancy_status = STATUS_BLOCKED
+            add_extended(
+                77,
+                occupancy_expected,
+                f"项目编码规范化后匹配行={len(occupancy_rows)}；缺行按0",
+                occupancy_status,
+            )
+
+            deviation_formula = {
+                78: number(report_row[63]) - number(report_row[29]),
+                79: number(report_row[64]) - number(report_row[30]),
+                80: number(report_row[65]) - number(report_row[31]),
+                81: number(report_row[66]) - number(report_row[32]),
+                82: safe_ratio(number(report_row[65]), number(report_row[63]))
+                - number(report_row[33]),
+                83: safe_ratio(number(report_row[66]), number(report_row[64]))
+                - number(report_row[34]),
+                84: number(report_row[67]) - number(report_row[36]),
+                85: number(report_row[75]) - number(report_row[27]),
+                86: number(report_row[68]) - number(report_row[19]),
+                87: number(report_row[69]) - number(report_row[20]),
+                88: number(report_row[70]) - number(report_row[21]),
+                89: number(report_row[74]) - number(report_row[22]),
+            }
+            for index, expected in deviation_formula.items():
+                add_extended(index, expected, "按模板偏差公式，以本报表上游字段复算")
+
+            cumulative_revenue = first_revenue + sum_index(current_accrual_rows, 11)
+            cumulative_semi_revenue = first_semi_revenue + sum_index(current_half_rows, 12)
+            cumulative_cost = first_cost + sum_index(current_accrual_rows, 25)
+            cumulative_own_cost = (
+                first_own_cost
+                + sum_index(current_accrual_rows, 26)
+                + sum_index(current_accrual_rows, 27)
+            )
+            cumulative_outsource_cost = first_outsource_cost + sum_index(
+                current_accrual_rows, 26
+            )
+            cumulative_energy_cost = first_energy_cost + sum_index(
+                current_accrual_rows, 29
+            )
+            cumulative_cash = first_cash + sum_index(current_half_rows, 10)
+            cumulative_receivable = sum_index(current_business_rows, 11) + sum_index(
+                current_receivable_rows, 8
+            )
+            cumulative_not_due = sum_index(current_receivable_rows, 14)
+            cumulative_direct = {
+                90: cumulative_revenue,
+                91: cumulative_semi_revenue,
+                94: cumulative_cost,
+                95: cumulative_own_cost,
+                96: cumulative_outsource_cost,
+                97: cumulative_energy_cost,
+                98: cumulative_cash,
+                99: cumulative_receivable,
+                100: cumulative_not_due,
+            }
+            for index, expected in cumulative_direct.items():
+                add_extended(
+                    index,
+                    expected,
+                    "进场后累计=首年累计底表+当前年度累计底表；缺失项目行按0",
+                )
+
+            cumulative_formula = {
+                92: number(report_row[89]) - number(report_row[93]),
+                93: number(report_row[90]) - number(report_row[93]),
+                101: safe_ratio(
+                    number(report_row[97]),
+                    number(report_row[97])
+                    + number(report_row[98])
+                    - number(report_row[99]),
+                ),
+            }
+            for index, expected in cumulative_formula.items():
+                add_extended(index, expected, "按模板公式，以本报表上游字段复算")
+            continue
+
         receivable_balance = sum_index(business_rows, 11) + sum_index(receivable_rows, 8)
         not_due = sum_index(receivable_rows, 14)
         for index, expected, rows_present, label in (
@@ -689,6 +1004,7 @@ def main() -> int:
         "detail_count": len(details),
         "status_counts": dict(counts),
         "source_gaps": dict(source_gaps),
+        "field_set": args.field_set,
         "missing_row_policy": args.missing_row_policy,
         "cumulative_policy": args.cumulative_policy,
         "template_evidence": template_check,
@@ -710,6 +1026,7 @@ def main() -> int:
         ("缺源阻塞", counts.get(STATUS_BLOCKED, 0)),
         ("待口径确认", counts.get(STATUS_REVIEW, 0)),
         ("缺行政策", args.missing_row_policy),
+        ("字段集", args.field_set),
         ("累计政策", args.cumulative_policy),
         ("说明", "敏感数据仅保存在本地输出；状态按逐项目逐字段统计。"),
     ]
