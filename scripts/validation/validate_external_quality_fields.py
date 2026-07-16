@@ -30,6 +30,15 @@ STATUS_PASS = "通过"
 STATUS_FAIL = "失败"
 STATUS_BLOCKED = "缺源阻塞"
 STATUS_REVIEW = "待口径确认"
+EXCEL_ERROR_VALUES = {
+    "#DIV/0!",
+    "#N/A",
+    "#NAME?",
+    "#NULL!",
+    "#NUM!",
+    "#REF!",
+    "#VALUE!",
+}
 
 XML_NS = {
     "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -75,9 +84,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--field-set",
-        choices=("original", "external-full", "remaining-report-formulas"),
+        choices=(
+            "original",
+            "external-full",
+            "remaining-report-formulas",
+            "all-report-formulas",
+        ),
         default="original",
-        help="Select the original, extended, or remaining report-formula field family.",
+        help="Select the original, extended, remaining, or all report-formula fields.",
     )
     parser.add_argument(
         "--cash-comparative-report",
@@ -222,6 +236,11 @@ def normalized_period(value: Any) -> str:
     return digits[:6] if len(digits) >= 6 else ""
 
 
+def period_reached(value: Any, report_period: str) -> bool:
+    period = normalized_period(value)
+    return bool(period and period <= report_period)
+
+
 def xlsx_cells_without_styles(path: Path) -> dict[str, dict[str, str]]:
     """Read cell values directly from OOXML, bypassing malformed style XML."""
     with ZipFile(path) as archive:
@@ -351,7 +370,13 @@ def build_cash_comparative(path: Path | None) -> dict[str, tuple[float, float, f
 def output_value(value: Any) -> Any:
     if isinstance(value, float) and math.isnan(value):
         return None
+    if isinstance(value, str) and value.strip().upper() in EXCEL_ERROR_VALUES:
+        return f"报表错误值:{value.strip().upper()}"
     return value
+
+
+def is_excel_error(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().upper() in EXCEL_ERROR_VALUES
 
 
 def main() -> int:
@@ -374,9 +399,10 @@ def main() -> int:
         args.occupancy_source,
         args.amortization_source,
     ]
-    if args.field_set == "external-full":
+    if args.field_set in {"external-full", "all-report-formulas"}:
         if not args.report_period or not re.fullmatch(r"\d{6}", args.report_period):
-            raise ValueError("external-full requires --report-period YYYYMM")
+            raise ValueError(f"{args.field_set} requires --report-period YYYYMM")
+    if args.field_set == "external-full":
         if any(path is None for path in extended_paths):
             raise ValueError(
                 "external-full requires accrual, current, occupancy, and "
@@ -399,6 +425,12 @@ def main() -> int:
 
     report_sheet = read_sheet(args.report, data_only=True)
     project_sheet, project_map = rows_by_key(args.project_master, 2, 0)
+    project_name_map: dict[str, list[tuple[Any, ...]]] = defaultdict(list)
+    for project_rows in project_map.values():
+        for project_row in project_rows:
+            project_name = norm_text(project_row[1] if len(project_row) > 1 else None)
+            if project_name:
+                project_name_map[project_name].append(project_row)
     saturation_sheet, saturation_map = rows_by_key(args.saturation_ledger, 2, 8)
     projection_sheet, projection_map = rows_by_key(args.projection_ledger, 4, 2)
     business_sheet, business_map = rows_by_key(args.business_aging, 5, 1)
@@ -600,6 +632,46 @@ def main() -> int:
             (52, "AZ", "6个月半收付税前利润", "amount", "报表公式"),
             (60, "BH", "6个月回款率", "ratio", "报表公式"),
         ]
+    elif args.field_set == "all-report-formulas":
+        field_specs = [
+            (9, "I", "进场时间", "text", "项目主数据+换月规则"),
+            (23, "W", "投模回款率", "ratio", "报表公式"),
+            (30, "AD", "调整后营业收入", "amount", "报表公式"),
+            (31, "AE", "调整后半收付收入", "amount", "报表公式"),
+            (32, "AF", "调整后权责税前利润", "amount", "报表公式"),
+            (33, "AG", "调整后半收付税前利润", "amount", "报表公式"),
+            (34, "AH", "调整后权责税前利润率", "ratio", "报表公式"),
+            (35, "AI", "调整后半收付税前利润率", "ratio", "报表公式"),
+            (36, "AJ", "调整后营业成本不含带资", "amount", "报表公式"),
+            (37, "AK", "调整后营业成本", "amount", "报表公式"),
+            (38, "AL", "1个月时间", "text", "报表公式"),
+            (42, "AP", "1个月回款率", "ratio", "报表公式"),
+            (43, "AQ", "3个月时间", "text", "报表公式"),
+            (47, "AU", "3个月回款率", "ratio", "报表公式"),
+            (48, "AV", "6个月时间", "text", "报表公式"),
+            (51, "AY", "6个月权责税前利润", "amount", "报表公式"),
+            (52, "AZ", "6个月半收付税前利润", "amount", "报表公式"),
+            (60, "BH", "6个月回款率", "ratio", "报表公式"),
+            (63, "BK", "首年时间", "text", "报表公式"),
+            (66, "BN", "首年权责税前利润", "amount", "报表公式"),
+            (67, "BO", "首年半收付税前利润", "amount", "报表公式"),
+            (75, "BW", "首年回款率", "ratio", "报表公式"),
+            (78, "BZ", "首年营业收入偏差", "amount", "报表公式"),
+            (79, "CA", "首年半收付收入偏差", "amount", "报表公式"),
+            (80, "CB", "首年权责税前利润偏差", "amount", "报表公式"),
+            (81, "CC", "首年半收付税前利润偏差", "amount", "报表公式"),
+            (82, "CD", "首年权责税前利润率偏差", "ratio", "报表公式"),
+            (83, "CE", "首年半收付税前利润率偏差", "ratio", "报表公式"),
+            (84, "CF", "首年营业成本偏差", "amount", "报表公式"),
+            (85, "CG", "首年带资使用偏差", "amount", "报表公式"),
+            (86, "CH", "首年自有成本偏差", "amount", "报表公式"),
+            (87, "CI", "首年外包成本偏差", "amount", "报表公式"),
+            (88, "CJ", "首年能耗成本偏差", "amount", "报表公式"),
+            (89, "CK", "首年回款率偏差", "ratio", "报表公式"),
+            (92, "CN", "进场后累计权责税前利润", "amount", "报表公式"),
+            (93, "CO", "进场后累计半收付税前利润", "amount", "报表公式"),
+            (101, "CW", "进场后累计综合回款率", "ratio", "报表公式"),
+        ]
 
     field_spec_by_index = {item[0]: item for item in field_specs}
     details: list[dict[str, Any]] = []
@@ -620,7 +692,27 @@ def main() -> int:
         note: str = "",
     ) -> None:
         passed, difference = compare(actual, expected, kind)
+        actual_error = is_excel_error(actual)
+        if actual_error:
+            passed = False
+            difference = None
         final_status = status or (STATUS_PASS if passed else STATUS_FAIL)
+        difference_type = ""
+        if final_status == STATUS_BLOCKED:
+            difference_type = "缺源阻塞"
+        elif final_status == STATUS_REVIEW:
+            difference_type = "待口径确认"
+        elif final_status == STATUS_FAIL:
+            expected_empty = expected is None or expected == ""
+            actual_number = comparable_number(actual)
+            if actual_error:
+                difference_type = "报表错误值"
+            elif expected_empty and actual_number is not None and near_zero(actual_number):
+                difference_type = "应空但报0"
+            elif expected_empty:
+                difference_type = "应空但有值"
+            else:
+                difference_type = "公式或取值差异"
         details.append(
             {
                 "报表行": row_number_value,
@@ -631,6 +723,7 @@ def main() -> int:
                 "应有值": output_value(expected),
                 "备选口径值": output_value(alternate),
                 "差异": output_value(difference),
+                "差异类型": difference_type,
                 "状态": final_status,
                 "来源角色": source,
                 "说明": note,
@@ -645,6 +738,15 @@ def main() -> int:
             continue
 
         project_rows = project_map.get(project_code, [])
+        project_match_note = "项目编码唯一匹配"
+        if not project_rows and args.field_set == "all-report-formulas":
+            report_project_name = norm_text(
+                report_row[2] if len(report_row) > 2 else None
+            )
+            name_rows = project_name_map.get(report_project_name, [])
+            if len(name_rows) == 1:
+                project_rows = name_rows
+                project_match_note = "项目编码未命中，按项目名称唯一匹配"
         saturation_rows = saturation_map.get(project_code, [])
         projection_rows = projection_map.get(project_code, [])
         if args.field_set == "external-full":
@@ -665,20 +767,33 @@ def main() -> int:
         project = first_or_none(project_rows)
         if project is None:
             source_gaps["项目主数据缺行或重复"] += 1
-            project_expected = {11: None, 12: None, 63: None}
+            project_expected = {11: None, 12: None}
+            if args.field_set != "all-report-formulas":
+                project_expected[63] = None
             project_expected[
-                9 if args.field_set == "remaining-report-formulas" else 38
+                9
+                if args.field_set
+                in {"remaining-report-formulas", "all-report-formulas"}
+                else 38
             ] = None
             project_status = STATUS_BLOCKED
         else:
+            entry_month = normalized_entry_month(project[12])
+            first_year_month = shifted_period(project[12], 11)
             project_expected = {
                 11: project[7],
                 12: number(project[9]),
-                63: shifted_period(project[12], 11),
             }
+            if args.field_set != "all-report-formulas":
+                project_expected[63] = (
+                    first_year_month
+                )
             project_expected[
-                9 if args.field_set == "remaining-report-formulas" else 38
-            ] = normalized_entry_month(project[12])
+                9
+                if args.field_set
+                in {"remaining-report-formulas", "all-report-formulas"}
+                else 38
+            ] = entry_month
             project_status = None
 
         for index, column, field, kind, source in field_specs:
@@ -694,7 +809,11 @@ def main() -> int:
                 actual=report_row[index - 1],
                 expected=project_expected[index],
                 status=project_status,
-                note="项目主数据唯一匹配" if project_status is None else "项目主数据无法唯一匹配",
+                note=(
+                    project_match_note
+                    if project_status is None
+                    else "项目主数据无法唯一匹配"
+                ),
             )
 
         saturation_status: str | None = None
@@ -826,31 +945,131 @@ def main() -> int:
             36: adjusted_cost - financed_input,
             37: adjusted_cost,
         }
-        if args.field_set == "remaining-report-formulas":
+        if args.field_set in {
+            "remaining-report-formulas",
+            "all-report-formulas",
+        }:
+            one_month = shifted_period(report_row[8], 0)
+            three_month = shifted_period(report_row[8], 2)
+            six_month = shifted_period(report_row[8], 5)
+            maturity_enabled = args.field_set == "all-report-formulas"
+            one_reached = not maturity_enabled or period_reached(
+                one_month, args.report_period
+            )
+            three_reached = not maturity_enabled or period_reached(
+                three_month, args.report_period
+            )
+            six_reached = not maturity_enabled or period_reached(
+                six_month, args.report_period
+            )
             formula_expected.update(
                 {
-                    38: shifted_period(report_row[8], 0),
-                    42: safe_ratio(
-                        number(report_row[38]),
-                        number(report_row[38])
-                        + number(report_row[39])
-                        - number(report_row[40]),
+                    38: one_month if one_reached else None,
+                    42: (
+                        safe_ratio(
+                            number(report_row[38]),
+                            number(report_row[38])
+                            + number(report_row[39])
+                            - number(report_row[40]),
+                        )
+                        if one_reached
+                        else None
                     ),
-                    43: shifted_period(report_row[8], 2),
-                    47: safe_ratio(
-                        number(report_row[43]),
-                        number(report_row[43])
-                        + number(report_row[44])
-                        - number(report_row[45]),
+                    43: three_month if three_reached else None,
+                    47: (
+                        safe_ratio(
+                            number(report_row[43]),
+                            number(report_row[43])
+                            + number(report_row[44])
+                            - number(report_row[45]),
+                        )
+                        if three_reached
+                        else None
                     ),
-                    48: shifted_period(report_row[8], 5),
-                    51: number(report_row[48]) - number(report_row[52]),
-                    52: number(report_row[49]) - number(report_row[52]),
-                    60: safe_ratio(
-                        number(report_row[56]),
-                        number(report_row[56])
-                        + number(report_row[57])
-                        - number(report_row[58]),
+                    48: six_month if six_reached else None,
+                    51: (
+                        number(report_row[48]) - number(report_row[52])
+                        if six_reached
+                        else None
+                    ),
+                    52: (
+                        number(report_row[49]) - number(report_row[52])
+                        if six_reached
+                        else None
+                    ),
+                    60: (
+                        safe_ratio(
+                            number(report_row[56]),
+                            number(report_row[56])
+                            + number(report_row[57])
+                            - number(report_row[58]),
+                        )
+                        if six_reached
+                        else None
+                    ),
+                }
+            )
+        if args.field_set == "all-report-formulas":
+            entry_month = shifted_period(report_row[8], 0)
+            first_year_month = shifted_period(report_row[8], 11)
+            entered = period_reached(entry_month, args.report_period)
+            first_year_reached = period_reached(
+                first_year_month, args.report_period
+            )
+            first_year_formula = {
+                66: number(report_row[63]) - number(report_row[67]),
+                67: number(report_row[64]) - number(report_row[67]),
+                75: safe_ratio(
+                    number(report_row[71]),
+                    number(report_row[71])
+                    + number(report_row[72])
+                    - number(report_row[73]),
+                ),
+                78: number(report_row[63]) - number(report_row[29]),
+                79: number(report_row[64]) - number(report_row[30]),
+                80: number(report_row[65]) - number(report_row[31]),
+                81: number(report_row[66]) - number(report_row[32]),
+                82: safe_ratio(number(report_row[65]), number(report_row[63]))
+                - number(report_row[33]),
+                83: safe_ratio(number(report_row[66]), number(report_row[64]))
+                - number(report_row[34]),
+                84: number(report_row[67]) - number(report_row[36]),
+                85: number(report_row[75]) - number(report_row[27]),
+                86: number(report_row[68]) - number(report_row[19]),
+                87: number(report_row[69]) - number(report_row[20]),
+                88: number(report_row[70]) - number(report_row[21]),
+                89: number(report_row[74]) - number(report_row[22]),
+            }
+            formula_expected[63] = (
+                first_year_month if first_year_reached else None
+            )
+            formula_expected.update(
+                {
+                    index: value if first_year_reached else None
+                    for index, value in first_year_formula.items()
+                }
+            )
+            formula_expected.update(
+                {
+                    92: (
+                        number(report_row[89]) - number(report_row[93])
+                        if entered
+                        else None
+                    ),
+                    93: (
+                        number(report_row[90]) - number(report_row[93])
+                        if entered
+                        else None
+                    ),
+                    101: (
+                        safe_ratio(
+                            number(report_row[97]),
+                            number(report_row[97])
+                            + number(report_row[98])
+                            - number(report_row[99]),
+                        )
+                        if entered
+                        else None
                     ),
                 }
             )
@@ -1083,7 +1302,10 @@ def main() -> int:
                 add_extended(index, expected, "按模板公式，以本报表上游字段复算")
             continue
 
-        if args.field_set == "remaining-report-formulas":
+        if args.field_set in {
+            "remaining-report-formulas",
+            "all-report-formulas",
+        }:
             continue
 
         receivable_balance = sum_index(business_rows, 11) + sum_index(receivable_rows, 8)
@@ -1192,7 +1414,10 @@ def main() -> int:
             note="按模板公式，以本报表AM、AN、AO复算；源值结论依赖AM口径确认",
         )
 
-    if args.field_set == "remaining-report-formulas":
+    if args.field_set in {
+        "remaining-report-formulas",
+        "all-report-formulas",
+    }:
         # This field set deliberately validates only project-master and
         # report-layer relationships. Do not surface unused ledger gaps.
         source_gaps = Counter(
@@ -1205,8 +1430,12 @@ def main() -> int:
 
     counts = Counter(item["状态"] for item in details)
     per_field: dict[str, Counter[str]] = defaultdict(Counter)
+    per_field_difference: dict[str, Counter[str]] = defaultdict(Counter)
     for item in details:
-        per_field[f"{item['列']} {item['字段']}"][item["状态"]] += 1
+        field_key = f"{item['列']} {item['字段']}"
+        per_field[field_key][item["状态"]] += 1
+        if item["差异类型"]:
+            per_field_difference[field_key][item["差异类型"]] += 1
 
     summary = {
         "report_rows": len({item["报表行"] for item in details}),
@@ -1215,6 +1444,7 @@ def main() -> int:
         "status_counts": dict(counts),
         "source_gaps": dict(source_gaps),
         "field_set": args.field_set,
+        "report_period": args.report_period,
         "missing_row_policy": args.missing_row_policy,
         "cumulative_policy": args.cumulative_policy,
         "cumulative_financial_policy": args.cumulative_financial_policy,
@@ -1238,6 +1468,7 @@ def main() -> int:
         ("待口径确认", counts.get(STATUS_REVIEW, 0)),
         ("缺行政策", args.missing_row_policy),
         ("字段集", args.field_set),
+        ("报表期间", args.report_period or ""),
         ("累计政策", args.cumulative_policy),
         ("累计财务来源政策", args.cumulative_financial_policy),
         ("说明", "敏感数据仅保存在本地输出；状态按逐项目逐字段统计。"),
@@ -1269,7 +1500,33 @@ def main() -> int:
     for key, value in source_gaps.items():
         gaps_sheet.append([key, value])
 
-    if args.field_set == "remaining-report-formulas":
+    difference_sheet = workbook.create_sheet("差异归因汇总")
+    difference_headers = [
+        "字段",
+        "应空但报0",
+        "应空但有值",
+        "公式或取值差异",
+        "报表错误值",
+        "缺源阻塞",
+        "待口径确认",
+    ]
+    difference_sheet.append(difference_headers)
+    for field in sorted(
+        per_field,
+        key=lambda value: field_specs[
+            [x[1] for x in field_specs].index(value.split()[0])
+        ][0],
+    ):
+        field_differences = per_field_difference[field]
+        difference_sheet.append(
+            [field]
+            + [field_differences.get(header, 0) for header in difference_headers[1:]]
+        )
+
+    if args.field_set in {
+        "remaining-report-formulas",
+        "all-report-formulas",
+    }:
         basis_sheet = workbook.create_sheet("字段识别依据")
         basis_sheet.append(
             ["列", "字段", "计算关系", "模板第5行", "纳入原因"]
@@ -1285,6 +1542,56 @@ def main() -> int:
             ("AZ", "6个月半收付税前利润", "半收付收入-营业成本", "空", "模板第3行明确算式"),
             ("BH", "6个月回款率", "现金流/(现金流+应收-未到账期)", "报表层", "明确报表公式"),
         ]
+        if args.field_set == "all-report-formulas":
+            formulas = {
+                "I": "项目进场日期按1-14日当月、15日后次月换月",
+                "W": "(P+O*6%)/(O*106%)",
+                "AD": "O",
+                "AE": "P",
+                "AF": "Q+Y+Z+AA*12",
+                "AG": "R+Y+Z+AA*12",
+                "AH": "AF/O",
+                "AI": "AG/P",
+                "AJ": "AK-AB",
+                "AK": "P-AG",
+                "AL": "I；未满1个月为空",
+                "AP": "AM/(AM+AN-AO)；未满1个月为空",
+                "AQ": "I+2个月；未满3个月为空",
+                "AU": "AR/(AR+AS-AT)；未满3个月为空",
+                "AV": "I+5个月；未满6个月为空",
+                "AY": "AW-BA；未满6个月为空",
+                "AZ": "AX-BA；未满6个月为空",
+                "BH": "BE/(BE+BF-BG)；未满6个月为空",
+                "BK": "I+11个月；未满12个月为空",
+                "BN": "BL-BP；未满12个月为空",
+                "BO": "BM-BP；未满12个月为空",
+                "BW": "BT/(BT+BU-BV)；未满12个月为空",
+                "BZ": "BL-AD；未满12个月为空",
+                "CA": "BM-AE；未满12个月为空",
+                "CB": "BN-AF；未满12个月为空",
+                "CC": "BO-AG；未满12个月为空",
+                "CD": "BN/BL-AH；未满12个月为空",
+                "CE": "BO/BM-AI；未满12个月为空",
+                "CF": "BP-AK；未满12个月为空",
+                "CG": "BX-AB；未满12个月为空",
+                "CH": "BQ-T；未满12个月为空",
+                "CI": "BR-U；未满12个月为空",
+                "CJ": "BS-V；未满12个月为空",
+                "CK": "BW-W；未满12个月为空",
+                "CN": "CL-CP；未进场为空",
+                "CO": "CM-CP；未进场为空",
+                "CW": "CT/(CT+CU-CV)；未进场为空",
+            }
+            basis_rows = [
+                (
+                    column,
+                    field,
+                    formulas[column],
+                    "不作为唯一依据",
+                    "模板计算关系或实际同表派生",
+                )
+                for _, column, field, _, _ in field_specs
+            ]
         for row in basis_rows:
             basis_sheet.append(row)
 
@@ -1310,10 +1617,24 @@ def main() -> int:
             )
             sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = width
     gaps_sheet.column_dimensions["B"].width = 18
-    if args.field_set == "remaining-report-formulas":
-        basis_sheet.column_dimensions["C"].width = 34
-        basis_sheet.column_dimensions["D"].width = 16
-        basis_sheet.column_dimensions["E"].width = 26
+    summary_sheet.column_dimensions["A"].width = 42
+    summary_sheet.column_dimensions["B"].width = 22
+    for column in ("C", "D", "E"):
+        summary_sheet.column_dimensions[column].width = 16
+    difference_sheet.column_dimensions["A"].width = 42
+    for column in ("B", "C", "D", "E", "F", "G"):
+        difference_sheet.column_dimensions[column].width = 18
+    details_sheet.column_dimensions["D"].width = 34
+    details_sheet.column_dimensions["I"].width = 18
+    details_sheet.column_dimensions["L"].width = 52
+    if args.field_set in {
+        "remaining-report-formulas",
+        "all-report-formulas",
+    }:
+        basis_sheet.column_dimensions["B"].width = 34
+        basis_sheet.column_dimensions["C"].width = 48
+        basis_sheet.column_dimensions["D"].width = 20
+        basis_sheet.column_dimensions["E"].width = 30
     if details:
         status_column = detail_headers.index("状态") + 1
         for row_index in range(2, details_sheet.max_row + 1):
