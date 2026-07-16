@@ -75,9 +75,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--field-set",
-        choices=("original", "external-full"),
+        choices=("original", "external-full", "remaining-report-formulas"),
         default="original",
-        help="Select the report field family to validate.",
+        help="Select the original, extended, or remaining report-formula field family.",
     )
     parser.add_argument(
         "--cash-comparative-report",
@@ -585,6 +585,21 @@ def main() -> int:
                 (101, "CW", "进场后累计综合回款率", "ratio", "报表公式"),
             ]
         )
+    elif args.field_set == "remaining-report-formulas":
+        # Fields outside K:AK and BK:CW that are derived at report layer.
+        # Row 5 of the template is only a hint: date shifts and the two
+        # six-month profit fields are also formulas according to row 3.
+        field_specs = [
+            (9, "I", "进场时间", "text", "项目主数据+换月规则"),
+            (38, "AL", "1个月时间", "text", "报表公式"),
+            (42, "AP", "1个月回款率", "ratio", "报表公式"),
+            (43, "AQ", "3个月时间", "text", "报表公式"),
+            (47, "AU", "3个月回款率", "ratio", "报表公式"),
+            (48, "AV", "6个月时间", "text", "报表公式"),
+            (51, "AY", "6个月权责税前利润", "amount", "报表公式"),
+            (52, "AZ", "6个月半收付税前利润", "amount", "报表公式"),
+            (60, "BH", "6个月回款率", "ratio", "报表公式"),
+        ]
 
     field_spec_by_index = {item[0]: item for item in field_specs}
     details: list[dict[str, Any]] = []
@@ -650,15 +665,20 @@ def main() -> int:
         project = first_or_none(project_rows)
         if project is None:
             source_gaps["项目主数据缺行或重复"] += 1
-            project_expected = {11: None, 12: None, 38: None, 63: None}
+            project_expected = {11: None, 12: None, 63: None}
+            project_expected[
+                9 if args.field_set == "remaining-report-formulas" else 38
+            ] = None
             project_status = STATUS_BLOCKED
         else:
             project_expected = {
                 11: project[7],
                 12: number(project[9]),
-                38: normalized_entry_month(project[12]),
                 63: shifted_period(project[12], 11),
             }
+            project_expected[
+                9 if args.field_set == "remaining-report-formulas" else 38
+            ] = normalized_entry_month(project[12])
             project_status = None
 
         for index, column, field, kind, source in field_specs:
@@ -806,6 +826,34 @@ def main() -> int:
             36: adjusted_cost - financed_input,
             37: adjusted_cost,
         }
+        if args.field_set == "remaining-report-formulas":
+            formula_expected.update(
+                {
+                    38: shifted_period(report_row[8], 0),
+                    42: safe_ratio(
+                        number(report_row[38]),
+                        number(report_row[38])
+                        + number(report_row[39])
+                        - number(report_row[40]),
+                    ),
+                    43: shifted_period(report_row[8], 2),
+                    47: safe_ratio(
+                        number(report_row[43]),
+                        number(report_row[43])
+                        + number(report_row[44])
+                        - number(report_row[45]),
+                    ),
+                    48: shifted_period(report_row[8], 5),
+                    51: number(report_row[48]) - number(report_row[52]),
+                    52: number(report_row[49]) - number(report_row[52]),
+                    60: safe_ratio(
+                        number(report_row[56]),
+                        number(report_row[56])
+                        + number(report_row[57])
+                        - number(report_row[58]),
+                    ),
+                }
+            )
         for index, column, field, kind, source in field_specs:
             if index not in formula_expected:
                 continue
@@ -1035,6 +1083,9 @@ def main() -> int:
                 add_extended(index, expected, "按模板公式，以本报表上游字段复算")
             continue
 
+        if args.field_set == "remaining-report-formulas":
+            continue
+
         receivable_balance = sum_index(business_rows, 11) + sum_index(receivable_rows, 8)
         not_due = sum_index(receivable_rows, 14)
         for index, expected, rows_present, label in (
@@ -1141,6 +1192,17 @@ def main() -> int:
             note="按模板公式，以本报表AM、AN、AO复算；源值结论依赖AM口径确认",
         )
 
+    if args.field_set == "remaining-report-formulas":
+        # This field set deliberately validates only project-master and
+        # report-layer relationships. Do not surface unused ledger gaps.
+        source_gaps = Counter(
+            {
+                key: value
+                for key, value in source_gaps.items()
+                if key.startswith("项目主数据")
+            }
+        )
+
     counts = Counter(item["状态"] for item in details)
     per_field: dict[str, Counter[str]] = defaultdict(Counter)
     for item in details:
@@ -1207,6 +1269,25 @@ def main() -> int:
     for key, value in source_gaps.items():
         gaps_sheet.append([key, value])
 
+    if args.field_set == "remaining-report-formulas":
+        basis_sheet = workbook.create_sheet("字段识别依据")
+        basis_sheet.append(
+            ["列", "字段", "计算关系", "模板第5行", "纳入原因"]
+        )
+        basis_rows = [
+            ("I", "进场时间", "进场日期1-14日计当月，15日后计次月", "非报表层", "存在换月计算"),
+            ("AL", "1个月时间", "等于进场时间", "yyyy-mm", "模板第3行明确等于关系"),
+            ("AP", "1个月回款率", "现金流/(现金流+应收-未到账期)", "报表层", "明确报表公式"),
+            ("AQ", "3个月时间", "进场时间+2个月", "空", "模板第3行明确日期偏移"),
+            ("AU", "3个月回款率", "现金流/(现金流+应收-未到账期)", "报表层", "明确报表公式"),
+            ("AV", "6个月时间", "进场时间+5个月", "空", "模板第3行明确日期偏移"),
+            ("AY", "6个月权责税前利润", "营业收入-营业成本", "空", "模板第3行明确算式"),
+            ("AZ", "6个月半收付税前利润", "半收付收入-营业成本", "空", "模板第3行明确算式"),
+            ("BH", "6个月回款率", "现金流/(现金流+应收-未到账期)", "报表层", "明确报表公式"),
+        ]
+        for row in basis_rows:
+            basis_sheet.append(row)
+
     header_fill = PatternFill("solid", fgColor="1F4E78")
     header_font = Font(color="FFFFFF", bold=True)
     status_fills = {
@@ -1228,6 +1309,11 @@ def main() -> int:
                 max(10, max(len(norm_text(cell.value)) for cell in column_cells) + 2),
             )
             sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = width
+    gaps_sheet.column_dimensions["B"].width = 18
+    if args.field_set == "remaining-report-formulas":
+        basis_sheet.column_dimensions["C"].width = 34
+        basis_sheet.column_dimensions["D"].width = 16
+        basis_sheet.column_dimensions["E"].width = 26
     if details:
         status_column = detail_headers.index("状态") + 1
         for row_index in range(2, details_sheet.max_row + 1):
