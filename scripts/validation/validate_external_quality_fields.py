@@ -77,7 +77,7 @@ def parse_args() -> argparse.Namespace:
         "--field-set",
         choices=("original", "external-full", "remaining-report-formulas"),
         default="original",
-        help="Select the report field family to validate.",
+        help="Select the original, extended, or remaining report-formula field family.",
     )
     parser.add_argument(
         "--cash-comparative-report",
