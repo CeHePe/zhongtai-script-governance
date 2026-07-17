@@ -57,6 +57,13 @@ def is_blank(value: Any) -> bool:
     return value is None or text(value) == ""
 
 
+def is_blank_or_zero(value: Any) -> bool:
+    if is_blank(value):
+        return True
+    number = number_or_none(value)
+    return number is not None and abs(number) < TOLERANCE_YUAN
+
+
 def period(value: Any) -> pd.Period | None:
     digits = re.sub(r"\D", "", text(value))
     if len(digits) < 6:
@@ -229,9 +236,9 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
             explanation = ""
 
             if entry is None:
-                status = "通过" if is_blank(raw_report_value) else "失败"
-                difference_type = "" if status == "通过" else "未成熟应为空"
-                explanation = "进场月缺失，无法形成投后窗口，字段必须为空"
+                status = "通过" if is_blank_or_zero(raw_report_value) else "失败"
+                difference_type = "" if status == "通过" else "未成熟非零"
+                explanation = "进场月缺失，无法形成投后窗口；空值允许以0体现"
             elif code in conflicting_ratios:
                 status = "阻塞"
                 difference_type = "穿透比例冲突"
@@ -241,9 +248,9 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
                 difference_type = "穿透比例缺失"
                 explanation = "项目查询中没有可用穿透比例"
             elif not mature:
-                status = "通过" if is_blank(raw_report_value) else "失败"
-                difference_type = "" if status == "通过" else "未成熟应为空"
-                explanation = f"未满{spec['月数']}个月，字段必须为空"
+                status = "通过" if is_blank_or_zero(raw_report_value) else "失败"
+                difference_type = "" if status == "通过" else "未成熟非零"
+                explanation = f"未满{spec['月数']}个月；空值允许以0体现"
             else:
                 if code_actual is not None:
                     source_rows = code_actual[
@@ -328,8 +335,8 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
                 "失败": counts.get("失败", 0),
                 "阻塞": counts.get("阻塞", 0),
                 "金额差异": sum(item["差异类型"] == "金额差异" for item in rows),
-                "未成熟非空": sum(
-                    item["差异类型"] == "未成熟应为空" for item in rows
+                "未成熟非零": sum(
+                    item["差异类型"] == "未成熟非零" for item in rows
                 ),
             }
         )
@@ -341,7 +348,10 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
             "finance_a_rule": "是否分摊=是；带资；按审批通过时间作为单月归属；分摊不含税金额*0.81*穿透比例",
             "finance_b_rule": "用户确认业财无带资记录，按0",
             "business_finance_policy": args.business_finance_policy,
-            "maturity_rule": "BI未满6个月为空；BX未满12个月为空；成熟字段缺值按0",
+            "maturity_rule": (
+                "BI未满6个月、BX未满12个月时为空，报表以0体现也视为通过；"
+                "成熟字段缺值按0"
+            ),
             "report_rows": report_rows,
             "finance_a_rows": len(finance_a),
             "finance_a_codes": finance_a["项目编码"].nunique(),
