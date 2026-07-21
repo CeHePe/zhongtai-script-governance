@@ -204,7 +204,14 @@ def parse_date(value: Any) -> date | None:
     if isinstance(value, date):
         return value
     text = norm_text(value)
-    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y-%m", "%Y/%m"):
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%Y-%m",
+        "%Y/%m",
+    ):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -985,7 +992,9 @@ def main() -> int:
             )
             formula_expected.update(
                 {
-                    38: one_month if one_reached else None,
+                    # Window labels remain visible even before the window is reached;
+                    # only the corresponding financial values stay unavailable.
+                    38: one_month,
                     42: (
                         safe_ratio(
                             number(report_row[38]),
@@ -996,7 +1005,7 @@ def main() -> int:
                         if one_reached
                         else None
                     ),
-                    43: three_month if three_reached else None,
+                    43: three_month,
                     47: (
                         safe_ratio(
                             number(report_row[43]),
@@ -1007,7 +1016,7 @@ def main() -> int:
                         if three_reached
                         else None
                     ),
-                    48: six_month if six_reached else None,
+                    48: six_month,
                     51: (
                         number(report_row[48]) - number(report_row[52])
                         if six_reached
@@ -1061,9 +1070,7 @@ def main() -> int:
                 88: number(report_row[70]) - number(report_row[21]),
                 89: number(report_row[74]) - number(report_row[22]),
             }
-            formula_expected[63] = (
-                first_year_month if first_year_reached else None
-            )
+            formula_expected[63] = first_year_month
             formula_expected.update(
                 {
                     index: value if first_year_reached else None
@@ -1578,15 +1585,15 @@ def main() -> int:
                 "AI": "AG/P",
                 "AJ": "AK-AB",
                 "AK": "P-AG",
-                "AL": "I；未满1个月为空",
+                "AL": "I；未达到窗口年月仍显示",
                 "AP": "AM/(AM+AN-AO)；未满1个月为空",
-                "AQ": "I+2个月；未满3个月为空",
+                "AQ": "I+2个月；未达到窗口年月仍显示",
                 "AU": "AR/(AR+AS-AT)；未满3个月为空",
-                "AV": "I+5个月；未满6个月为空",
+                "AV": "I+5个月；未达到窗口年月仍显示",
                 "AY": "AW-BA；未满6个月为空",
                 "AZ": "AX-BA；未满6个月为空",
                 "BH": "BE/(BE+BF-BG)；未满6个月为空",
-                "BK": "I+11个月；未满12个月为空",
+                "BK": "I+11个月；未达到窗口年月仍显示",
                 "BN": "BL-BP；未满12个月为空",
                 "BO": "BM-BP；未满12个月为空",
                 "BW": "BT/(BT+BU-BV)；未满12个月为空",
