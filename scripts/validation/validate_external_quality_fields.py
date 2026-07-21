@@ -86,6 +86,7 @@ def parse_args() -> argparse.Namespace:
         "--field-set",
         choices=(
             "original",
+            "base-current",
             "external-full",
             "remaining-report-formulas",
             "all-report-formulas",
@@ -148,6 +149,12 @@ def safe_ratio(numerator: float, denominator: float) -> float:
 
 
 def compare(actual: Any, expected: Any, kind: str) -> tuple[bool, float | None]:
+    # The external-quality report renders an unavailable value as numeric zero.
+    # Treat that display convention as equivalent to an empty expected value.
+    if expected is None or expected == "":
+        actual_num = comparable_number(actual)
+        if actual_num is not None and near_zero(actual_num):
+            return True, 0.0
     if kind == "text":
         return norm_text(actual) == norm_text(expected), None
     if kind == "year":
@@ -160,7 +167,13 @@ def compare(actual: Any, expected: Any, kind: str) -> tuple[bool, float | None]:
         return actual_num is None and expected_num is None, None
     diff = actual_num - expected_num
     tolerance = RATIO_TOLERANCE if kind == "ratio" else AMOUNT_TOLERANCE
-    return abs(diff) <= tolerance, diff
+    passed = math.isclose(
+        actual_num,
+        expected_num,
+        rel_tol=1e-9 if kind == "ratio" else 0.0,
+        abs_tol=tolerance + 1e-12,
+    )
+    return passed, diff
 
 
 def read_sheet(path: Path, data_only: bool = True):
@@ -399,7 +412,7 @@ def main() -> int:
         args.occupancy_source,
         args.amortization_source,
     ]
-    if args.field_set in {"external-full", "all-report-formulas"}:
+    if args.field_set in {"base-current", "external-full", "all-report-formulas"}:
         if not args.report_period or not re.fullmatch(r"\d{6}", args.report_period):
             raise ValueError(f"{args.field_set} requires --report-period YYYYMM")
     if args.field_set == "external-full":
@@ -512,7 +525,7 @@ def main() -> int:
     saturation_period_available = True
     projection_period_available = True
     cumulative_financial_available = False
-    if args.field_set == "external-full":
+    if args.field_set in {"base-current", "external-full"}:
         saturation_period_available = any(
             normalized_period(row[2]) == args.report_period
             for rows in saturation_map.values()
@@ -572,7 +585,9 @@ def main() -> int:
         (41, "AO", "未到账期金额", "amount", "账龄底表"),
         (42, "AP", "回款率", "ratio", "报表公式"),
     ]
-    if args.field_set == "external-full":
+    if args.field_set == "base-current":
+        field_specs = [item for item in field_specs if item[0] <= 37]
+    elif args.field_set == "external-full":
         field_specs = [item for item in field_specs if item[0] <= 37]
         field_specs.extend(
             [
@@ -739,7 +754,10 @@ def main() -> int:
 
         project_rows = project_map.get(project_code, [])
         project_match_note = "项目编码唯一匹配"
-        if not project_rows and args.field_set == "all-report-formulas":
+        if not project_rows and args.field_set in {
+            "base-current",
+            "all-report-formulas",
+        }:
             report_project_name = norm_text(
                 report_row[2] if len(report_row) > 2 else None
             )
@@ -749,7 +767,7 @@ def main() -> int:
                 project_match_note = "项目编码未命中，按项目名称唯一匹配"
         saturation_rows = saturation_map.get(project_code, [])
         projection_rows = projection_map.get(project_code, [])
-        if args.field_set == "external-full":
+        if args.field_set in {"base-current", "external-full"}:
             saturation_rows = [
                 row
                 for row in saturation_rows
@@ -817,7 +835,10 @@ def main() -> int:
             )
 
         saturation_status: str | None = None
-        if args.field_set == "external-full" and not saturation_period_available:
+        if (
+            args.field_set in {"base-current", "external-full"}
+            and not saturation_period_available
+        ):
             source_gaps["年饱和台账缺报表期间数据"] += 1
             saturation_expected = {13: "", 14: 0.0}
             saturation_status = STATUS_BLOCKED
@@ -851,7 +872,7 @@ def main() -> int:
                 status=saturation_status,
                 note=(
                     f"源台账无报表期间={args.report_period}的数据"
-                    if args.field_set == "external-full"
+                    if args.field_set in {"base-current", "external-full"}
                     and not saturation_period_available
                     else "无匹配行"
                     if not saturation_rows
@@ -863,7 +884,7 @@ def main() -> int:
         projection = first_or_none(projection_rows)
         confirmed_absent = project_code in set(args.confirmed_absent_project_code)
         if (
-            args.field_set == "external-full"
+            args.field_set in {"base-current", "external-full"}
             and not projection_period_available
             and not confirmed_absent
         ):
@@ -912,7 +933,7 @@ def main() -> int:
                     "用户已确认项目在报表期间投模台账缺行，按0"
                     if confirmed_absent and not projection_rows
                     else f"源台账无报表期间={args.report_period}的数据"
-                    if args.field_set == "external-full"
+                    if args.field_set in {"base-current", "external-full"}
                     and not projection_period_available
                     else "无匹配行"
                     if not projection_rows
@@ -1087,6 +1108,9 @@ def main() -> int:
                 expected=formula_expected[index],
                 note="按模板报表层公式，以本报表上游字段复算",
             )
+
+        if args.field_set == "base-current":
+            continue
 
         if args.field_set == "external-full":
             accrual_rows = accrual_map.get(project_code, [])
